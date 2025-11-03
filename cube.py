@@ -62,6 +62,7 @@ def drawState (state):
         pygame.draw.rect(screen, color,  (offset[0] + xOffset, offset[1] + yOffset, size, size), 0)
         pygame.draw.rect(screen, "black",  (offset[0] + xOffset, offset[1] + yOffset, size, size), 2) 
 
+# take a list of ints and returns a list containings pairs of (source, destination)
 def permFromCycle (stickers):
     perm = [] # src - dst
     for i in range(len(stickers)):
@@ -77,6 +78,7 @@ uMove = [[ S("U",1), S("U",3), S("U",9), S("U",7) ],
          [ S("F",2), S("L",2), S("B",2), S("R",2) ],
          [ S("F",3), S("L",3), S("B",3), S("R",3) ] ]
 
+# take in a cube state and apply a list of permutations to it
 def applyMove (cube, move):
     newCube = list(cube)
     for perms in move:
@@ -85,6 +87,29 @@ def applyMove (cube, move):
             newCube[pair[1]] = cube[pair[0]]
     newCube = "".join(newCube)
     return newCube
+
+def predicate():
+    pass
+
+class Sticker:
+    def __init__(self, pos, dst):
+        self.pos = pos
+        self.dst = dst
+
+class gMove:
+    def __init__(self, name, axis, angle, predicate):
+        self.name = name
+        self.axis = axis
+        self.angle = angle
+        self.predicate = predicate
+
+def applyGMove(move, sticker):
+    pass
+
+solvedGCube = []
+for i in range(54):
+    solvedGCube.append(Sticker((0, 0, 0), (0, 0, 0)))
+
 
 while running:
     # poll for events
@@ -95,6 +120,7 @@ while running:
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_u:
                 solvedCube = applyMove(solvedCube, uMove)
+                
 
 
     # fill the screen with a color to wipe away anything from last frame
