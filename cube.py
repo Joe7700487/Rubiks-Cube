@@ -1,5 +1,7 @@
 # Example file showing a circle moving on screen
 import pygame
+import numpy as np
+import math
 
 # pygame setup
 pygame.init()
@@ -9,14 +11,19 @@ running = True
 dt = 0
 
 #------------------------ Cube setup ---------------------------------
+x = 0
+y = 1
+z = 2
 size = 50
 globalOffset = 100
+# offsets for drawing faces
 uOffset = (size * 3 + globalOffset, size * 0 + globalOffset)
 lOffset = (size * 0 + globalOffset, size * 3 + globalOffset)
 fOffset = (size * 3 + globalOffset, size * 3 + globalOffset)
 rOffset = (size * 6 + globalOffset, size * 3 + globalOffset)
 bOffset = (size * 9 + globalOffset, size * 3 + globalOffset)
 dOffset = (size * 3 + globalOffset, size * 6 + globalOffset)
+# colors
 blue    = (0, 0, 255)
 green   = (0, 255, 0)
 red     = (255, 0, 0)
@@ -88,8 +95,22 @@ def applyMove (cube, move):
     newCube = "".join(newCube)
     return newCube
 
-def predicate():
-    pass
+def applyAxisAngle(vector, axis, angle_radians):
+    angle_radians = math.radians(angle_radians)
+
+    # Normalize the axis to ensure it's a unit vector
+    axis = axis / np.linalg.norm(axis)
+
+    # Rodrigues' rotation formula
+    rotated_vector = (
+        vector * np.cos(angle_radians)
+        + np.cross(axis, vector) * np.sin(angle_radians)
+        + axis * np.dot(axis, vector) * (1 - np.cos(angle_radians))
+    )
+    rotated_vector[x] = round(rotated_vector[x])
+    rotated_vector[y] = round(rotated_vector[y])
+    rotated_vector[z] = round(rotated_vector[z])
+    return rotated_vector.astype(int)
 
 class Sticker:
     def __init__(self, pos, dst):
@@ -103,12 +124,76 @@ class gMove:
         self.angle = angle
         self.predicate = predicate
 
-def applyGMove(move, sticker):
-    pass
+def applyGMove(cube, move):
+    for sticker in cube:
+        if move.predicate(sticker.pos):
+            sticker.pos = applyAxisAngle(sticker.pos, move.axis, move.angle)
 
-solvedGCube = []
-for i in range(54):
-    solvedGCube.append(Sticker((0, 0, 0), (0, 0, 0)))
+
+def getFace(sticker):
+    if (sticker.dst[y] == 3):
+        return "U"
+    elif (sticker.dst[y] == -3):
+        return "D"
+    elif (sticker.dst[x] == 3):
+        return "R"
+    elif (sticker.dst[x] == -3):
+        return "L"
+    elif (sticker.dst[z] == 3):
+        return "F"
+    elif (sticker.dst[z] == -3):
+        return "B"
+    
+guMove = gMove("U", np.array([0, 1, 0]), 270,  lambda pos: pos[y] > 0)
+gdMove = gMove("D", np.array([0, -1, 0]), 270,  lambda pos: pos[y] < 0)
+grMove = gMove("R", np.array([1, 0, 0]), 270,  lambda pos: pos[x] > 0)
+glMove = gMove("L", np.array([-1, 0, 0]), 270,  lambda pos: pos[x] < 0)
+gfMove = gMove("F", np.array([0, 0, 1]), 270,  lambda pos: pos[z] > 0)
+gbMove = gMove("B", np.array([0, 0, -1]), 270,  lambda pos: pos[z] < 0)
+
+solvedGCube = [
+    Sticker(np.array([x, 3, y]), np.array([x, 3, y])) if f == 0 else
+    Sticker(np.array([x, -3, y]), np.array([x, -3, y])) if f == 1 else
+    Sticker(np.array([3, x, y]), np.array([3, x, y])) if f == 2 else
+    Sticker(np.array([-3, x, y]), np.array([-3, x, y])) if f == 3 else
+    Sticker(np.array([x, y, 3]), np.array([x, y, 3])) if f == 4 else
+    Sticker(np.array([x, y, -3]), np.array([x, y, -3]))
+    for f in range(6)
+    for i in range(3)
+    for j in range(3)
+    for x, y in [((-2 + j * 2), (-2 + i * 2))]
+]
+
+def convertGcube(gcube):
+    sCube = ""
+
+    # Up (y = +3): view from above, z decreases downward, x increases rightward
+    uFace = sorted([s for s in gcube if s.pos[y] == 3],
+                   key=lambda s: (s.pos[z], s.pos[x]))
+    # Down (y = -3): viewed from below, z increases downward, x increases rightward
+    dFace = sorted([s for s in gcube if s.pos[y] == -3],
+                   key=lambda s: (-s.pos[z], s.pos[x]))
+
+    # Left (x = -3): viewed from left, y decreases downward, z increases rightward
+    lFace = sorted([s for s in gcube if s.pos[x] == -3],
+                   key=lambda s: (-s.pos[y], s.pos[z]))
+    # Right (x = +3): viewed from right, y decreases downward, z decreases rightward
+    rFace = sorted([s for s in gcube if s.pos[x] == 3],
+                   key=lambda s: (-s.pos[y], -s.pos[z]))
+
+    # Front (z = +3): viewed from front, y decreases downward, x increases rightward
+    fFace = sorted([s for s in gcube if s.pos[z] == 3],
+                   key=lambda s: (-s.pos[y], s.pos[x]))
+    # Back (z = -3): viewed from back, y decreases downward, x decreases rightward
+    bFace = sorted([s for s in gcube if s.pos[z] == -3],
+                   key=lambda s: (-s.pos[y], -s.pos[x]))
+
+
+    # Build ULFRBD order
+    for face in [uFace, lFace, fFace, rFace, bFace, dFace]:
+        for sticker in face:
+            sCube += getFace(sticker)
+    return sCube
 
 
 while running:
@@ -119,8 +204,24 @@ while running:
             running = False
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_u:
-                solvedCube = applyMove(solvedCube, uMove)
-                
+                # solvedCube = applyMove(solvedCube, uMove)
+                applyGMove(solvedGCube, guMove)
+                solvedCube = convertGcube(solvedGCube)
+            if event.key == pygame.K_r:
+                applyGMove(solvedGCube, grMove)
+                solvedCube = convertGcube(solvedGCube)
+            if event.key == pygame.K_l:
+                applyGMove(solvedGCube, glMove)
+                solvedCube = convertGcube(solvedGCube)
+            if event.key == pygame.K_d:
+                applyGMove(solvedGCube, gdMove)
+                solvedCube = convertGcube(solvedGCube)
+            if event.key == pygame.K_f:
+                applyGMove(solvedGCube, gfMove)
+                solvedCube = convertGcube(solvedGCube)
+            if event.key == pygame.K_b:
+                applyGMove(solvedGCube, gbMove)
+                solvedCube = convertGcube(solvedGCube)
 
 
     # fill the screen with a color to wipe away anything from last frame
