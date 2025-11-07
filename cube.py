@@ -15,15 +15,14 @@ dt = 0
 x = 0
 y = 1
 z = 2
-size = 50
-globalOffset = 100
+size = 25
 # offsets for drawing faces
-uOffset = (size * 3 + globalOffset, size * 0 + globalOffset)
-lOffset = (size * 0 + globalOffset, size * 3 + globalOffset)
-fOffset = (size * 3 + globalOffset, size * 3 + globalOffset)
-rOffset = (size * 6 + globalOffset, size * 3 + globalOffset)
-bOffset = (size * 9 + globalOffset, size * 3 + globalOffset)
-dOffset = (size * 3 + globalOffset, size * 6 + globalOffset)
+uOffset = (size * 3, size * 0)
+lOffset = (size * 0, size * 3)
+fOffset = (size * 3, size * 3)
+rOffset = (size * 6, size * 3)
+bOffset = (size * 9, size * 3)
+dOffset = (size * 3, size * 6)
 # colors
 blue    = (0, 0, 255)
 green   = (0, 255, 0)
@@ -31,6 +30,7 @@ red     = (255, 0, 0)
 white   = (255, 255, 255)
 orange  = (255,165,0)
 yellow  = (255,215,0)
+black  = (50,50,50)
 
 # ------------------------------------------ fcube logic -----------------------------------
 
@@ -59,9 +59,7 @@ def getFacesFromIndex(indexs):
     return string
 
 # take a string to display the state of the cube
-def drawState (state):
-    xOffset = 0
-    yOffset = 0
+def drawState (state, globalxOffset, globalyOffset):
     offset = uOffset
     color = ()
     for i in range(len(state)):
@@ -77,11 +75,12 @@ def drawState (state):
         elif sticker == "R": color = red
         elif sticker == "B": color = blue
         elif sticker == "D": color = yellow
+        elif sticker == "X": color = black
         xOffset = (i % 3) * size
         if (i % 3 == 0) and (i > 0): yOffset += size
         if i % 9 == 0: yOffset = 0
-        pygame.draw.rect(screen, color,  (offset[0] + xOffset, offset[1] + yOffset, size, size), 0)
-        pygame.draw.rect(screen, "black",  (offset[0] + xOffset, offset[1] + yOffset, size, size), 2) 
+        pygame.draw.rect(screen, color,  (offset[0] + xOffset + globalxOffset, offset[1] + yOffset + globalyOffset, size, size), 0)
+        pygame.draw.rect(screen, "black",  (offset[0] + xOffset + globalxOffset, offset[1] + yOffset + globalyOffset, size, size), 1) 
 
 # take in an fcube string and apply a list of permutation pairs to it
 def applyMove(cube_list, move):
@@ -99,6 +98,14 @@ def applyFmoves(cube, moves):
     for move in moves:
         cube_list = applyMove(cube_list, move)
     return "".join(cube_list)  # convert back once
+
+# apply a list of moves to an IF cube list
+def applyIFmoves(cube, moves):
+    moves = moves.split(" ")
+    cube_list = cube
+    for move in moves:
+        cube_list = applyMove(cube_list, move)
+    return cube_list
 
 # --------------------------------------------- gcube logic --------------------------------------------
 class Sticker:
@@ -266,6 +273,7 @@ gMoves = {
 }
 
 solvedCube = "UUUUUUUUULLLLLLLLLFFFFFFFFFRRRRRRRRRBBBBBBBBBDDDDDDDDD"
+solvedCubeAfter = "UUUUUUUUULLLLLLLLLFFFFFFFFFRRRRRRRRRBBBBBBBBBDDDDDDDDD"
 solvedGCube = [
     Sticker(np.array([x, 3, y]), np.array([x, 3, y])) if f == 0 else
     Sticker(np.array([x, -3, y]), np.array([x, -3, y])) if f == 1 else
@@ -282,11 +290,48 @@ solvedGCube = [
 # --------------------------------- solver -----------------------------------------------
 stdMoves = ["U", "U'", "U2", "D", "D'", "D2", "L", "L'", "L2", "R", "R'", "R2", "F", "F'", "F2", "B", "B'", "B2"]
 ifCube = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53]
+ifCubeAfter = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53]
+
+def getMaskedCube(ifcube, mask):
+    maskedCube = ""
+    for index in ifcube:
+        if index not in mask:
+            maskedCube += "X"
+        else:
+            maskedCube += "ULFRBD"[math.floor(index / 9)]
+    # print(maskedCube)
+    return maskedCube
+
+def genPruningTable(solvedStates, depth, moveset):
+    pruningTable = {}
+    previousFrontier = solvedStates
+
+    for state in solvedStates:
+        pruningTable[state] = 0
+
+    for i in range(1, depth + 1):
+        frontier = []
+        for state in previousFrontier:
+            for move in moveset:
+                newState = "".join(applyFmoves(state, move))
+                if(newState not in pruningTable):
+                    pruningTable[newState] = i
+                    frontier.append(newState)
+        previousFrontier = frontier
+
+    with open("pruningtable.txt", "w") as file:
+        for key, value in pruningTable.items():
+            file.write(f"{key}:{value}\n")
+
+    return pruningTable
+
 
 class SimpleSolver:
-    def __init__(self, isSolved, candidateMoves):
+    def __init__(self, isSolved, candidateMoves, pruningTable, pruningDepth):
         self.isSolved = isSolved
         self.moves = candidateMoves
+        self.pruningTable = pruningTable
+        self.pruningDepth = pruningDepth
 
 # first block solver
 fbPieces = [12, 13, 14, 15, 16, 17, 21, 24, 41, 44, 45, 48, 51]
@@ -296,7 +341,9 @@ def fbIsSolved(fcube):
         if (fcube[fbPieces[i]] != FBFACES[i]):
             return False
     return True
-simplefbSolver = SimpleSolver(fbIsSolved, stdMoves)
+fbPruningDepth = 5
+fbPruningTable = genPruningTable([getMaskedCube(ifCube, fbPieces)], fbPruningDepth, stdMoves)
+simplefbSolver = SimpleSolver(fbIsSolved, stdMoves, fbPruningTable, fbPruningDepth)
 
 # depth first search
 def solvedfs(solver, cube, solution, depthRemaining):
@@ -310,10 +357,38 @@ def solvedfs(solver, cube, solution, depthRemaining):
             return result
     return None
 
+def solvedfsWithPruning(solver, cube, solution, depthRemaining):
+    if solver.isSolved(cube):
+        return solution.strip()
+
+    # pruning
+    lowerBound = solver.pruningTable.get(cube)
+    if lowerBound == None:
+        lowerBound = solver.pruningDepth + 1
+    if lowerBound > depthRemaining:
+        return None
+    
+    for move in solver.moves:
+        if len(solution) and move[0] == solution[len(solution) - 1][0]:
+            continue
+        
+        result = solvedfsWithPruning(solver, applyFmoves(cube, move), solution + " " + str(move), depthRemaining - 1,)
+        if result != None:
+            return result
+    return None
+
 # iteratively deepening dfs
 def solveiddfs(solver, cube, depthLimit):
     for depth in range(depthLimit):
         solution = solvedfs(solver, cube, "", depth + 1)
+        if (solution != None):
+            return solution
+    return None
+
+# iteratively deepening dfs
+def solveiddfs2(solver, maskedCube, depthLimit):
+    for depth in range(depthLimit):
+        solution = solvedfsWithPruning(solver, maskedCube, "", depth + 1)
         if (solution != None):
             return solution
     return None
@@ -351,18 +426,32 @@ while running:
                 # applyGMove(solvedGCube, gMoves["B"])
                 # solvedCube = convertGcube(solvedGCube)
 
+            if event.key == pygame.K_g:
+                startTime = time.perf_counter()
+                genPruningTable([getMaskedCube(ifCube, fbPieces)], 5, stdMoves)
+                endTime = time.perf_counter()
+                totalTime = endTime - startTime
+                print(f"Generated pruning table in {totalTime:.2f} seconds")
+
             # R D2 L F2 L U2 F2 L' B2 R2 F2 R2 D' R' U' R' F' R2 D' B' L'
             # F D2 L' B' D'
             # Solved in 3.61 seconds  without print statement for every move
             # Solved in 53.66 seconds with print statements
-            if event.key == pygame.K_g:
-                solvedCube = applyFmoves(solvedCube, "B D2 R' F2 L' B2 F2 L' F2 R' B2 R' B2 D R F' R2 D' L2 U L")          
+            if event.key == pygame.K_s:
+                scramble = "F2 L B2 R' B2 R B2 L F2 D2 R2 B L' R' F U' R' B2 L' B2"
+                solvedCube = applyFmoves(solvedCube, scramble)          
+                ifCube = applyIFmoves(ifCube, scramble)
+                solvedCubeAfter = solvedCube       
+                ifCubeAfter = ifCube
+
                 startTime = time.perf_counter()
-                solution = solveiddfs(simplefbSolver, solvedCube, 6)
+                solution = solveiddfs2(simplefbSolver, getMaskedCube(ifCube, fbPieces), 10)
                 endTime = time.perf_counter()
+
                 if solution != None:
                     if len(solution) > 0:
-                        solvedCube = applyFmoves(solvedCube, solution)
+                        solvedCubeAfter = applyFmoves(solvedCube, solution)
+                        ifCubeAfter = applyIFmoves(ifCube, solution)
                         print(solution)
                         totalTime = endTime - startTime
                         print(f"Solved in {totalTime:.2f} seconds")
@@ -405,8 +494,14 @@ while running:
     # fill the screen with a color to wipe away anything from last frame
     screen.fill((100,100,100))
 
-    drawState(solvedCube)
-    
+    drawState(solvedCube, 100, 100)
+    drawState(solvedCubeAfter, 100, 350)
+    drawState(getMaskedCube(ifCube, fbPieces), 450, 100)
+    drawState(getMaskedCube(ifCubeAfter, fbPieces), 450, 350)
+
+    # drawState("XXXXXXXXXXXXLLLXXBXXXFXXLLLXXXXXXFXXXXXXXBXXXDDDXXXXXX", 800, 100)
+
+
     # flip() the display to put your work on screen
     pygame.display.flip()
 
