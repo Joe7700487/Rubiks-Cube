@@ -3,6 +3,8 @@ import pygame
 import numpy as np
 import math
 import time
+import fbPruningTable
+import g1PruningTable
 
 # pygame setup
 pygame.init()
@@ -31,20 +33,21 @@ white   = (255, 255, 255)
 orange  = (255,165,0)
 yellow  = (255,215,0)
 black  = (50,50,50)
+offwhite  = (255,245,200)
 
 # ------------------------------------------ fcube logic -----------------------------------
 
 # return the fcube index from the index of a face
-# def S(face, idx):
-#     idx = idx - 1
-#     index = 0
-#     if face == "U": index = idx + 0
-#     elif face == "L" : index = idx + 9
-#     elif face == "F" : index = idx + 18
-#     elif face == "R" : index = idx + 27
-#     elif face == "B" : index = idx + 36
-#     elif face == "D" : index = idx + 45
-#     return (index)
+def S(face, idx):
+    idx = idx - 1
+    index = 0
+    if face == "U": index = idx + 0
+    elif face == "L" : index = idx + 9
+    elif face == "F" : index = idx + 18
+    elif face == "R" : index = idx + 27
+    elif face == "B" : index = idx + 36
+    elif face == "D" : index = idx + 45
+    return (index)
 
 # recieve a list of indicies and return a string of faces for each index
 def getFacesFromIndex(indexs):
@@ -76,6 +79,7 @@ def drawState (state, globalxOffset, globalyOffset):
         elif sticker == "B": color = blue
         elif sticker == "D": color = yellow
         elif sticker == "X": color = black
+        elif sticker == "o": color = offwhite
         xOffset = (i % 3) * size
         if (i % 3 == 0) and (i > 0): yOffset += size
         if i % 9 == 0: yOffset = 0
@@ -230,76 +234,69 @@ def convertGcube(gcube):
 
 # ------------------------------ define solved cubes and legal moves --------------------------
 # moves defined by permutation pairs
-fMoves = {
-    "U":  [[0, 2], [1, 5], [2, 8], [3, 1], [4, 4], [5, 7], [6, 0], [7, 3], [8, 6], [29, 20], [28, 19], [27, 18], [9, 36], [10, 37], [11, 38], [18, 9], [19, 10], [20, 11], [38, 29], [37, 28], [36, 27]],
-    "D":  [[51, 45], [52, 48], [53, 51], [48, 46], [49, 49], [50, 52], [45, 47], [46, 50], [47, 53], [35, 44], [34, 43], [33, 42], [15, 24], [16, 25], [17, 26], [24, 33], [25, 34], [26, 35], [44, 17], [43, 16], [42, 15]],
-    "L":  [[0, 18], [3, 21], [6, 24], [51, 38], [48, 41], [45, 44], [15, 9], [12, 10], [9, 11], [16, 12], [13, 13], [10, 14], [17, 15], [14, 16], [11, 17], [24, 51], [21, 48], [18, 45], [44, 0], [41, 3], [38, 6]],
-    "R":  [[2, 42], [5, 39], [8, 36], [53, 26], [50, 23], [47, 20], [35, 33], [32, 34], [29, 35], [34, 30], [31, 31], [28, 32], [33, 27], [30, 28], [27, 29], [26, 8], [23, 5], [20, 2], [42, 47], [39, 50], [36, 53]],
-    "F":  [[6, 27], [7, 30], [8, 33], [45, 11], [46, 14], [47, 17], [33, 45], [30, 46], [27, 47], [17, 6], [14, 7], [11, 8], [24, 18], [25, 21], [26, 24], [21, 19], [22, 22], [23, 25], [18, 20], [19, 23], [20, 26]],
-    "B":  [[0, 15], [1, 12], [2, 9], [51, 35], [52, 32], [53, 29], [35, 2], [32, 1], [29, 0], [15, 53], [12, 52], [9, 51], [44, 42], [43, 39], [42, 36], [41, 43], [40, 40], [39, 37], [38, 44], [37, 41], [36, 38]],
-    "U'": [[0, 6], [1, 3], [2, 0], [3, 7], [4, 4], [5, 1], [6, 8], [7, 5], [8, 2], [29, 38], [28, 37], [27, 36], [9, 18], [10, 19], [11, 20], [18, 27], [19, 28], [20, 29], [38, 11], [37, 10], [36, 9]],
-    "D'": [[51, 53], [52, 50], [53, 47], [48, 52], [49, 49], [50, 46], [45, 51], [46, 48], [47, 45], [35, 26], [34, 25], [33, 24], [15, 42], [16, 43], [17, 44], [24, 15], [25, 16], [26, 17], [44, 35], [43, 34], [42, 33]],
-    "L'": [[0, 44], [3, 41], [6, 38], [51, 24], [48, 21], [45, 18], [15, 17], [12, 16], [9, 15], [16, 14], [13, 13], [10, 12], [17, 11], [14, 10], [11, 9], [24, 6], [21, 3], [18, 0], [44, 45], [41, 48], [38, 51]],
-    "R'": [[2, 20], [5, 23], [8, 26], [53, 36], [50, 39], [47, 42], [35, 29], [32, 28], [29, 27], [34, 32], [31, 31], [28, 30], [33, 35], [30, 34], [27, 33], [26, 53], [23, 50], [20, 47], [42, 2], [39, 5], [36, 8]],
-    "F'": [[6, 17], [7, 14], [8, 11], [45, 33], [46, 30], [47, 27], [33, 8], [30, 7], [27, 6], [17, 47], [14, 46], [11, 45], [24, 26], [25, 23], [26, 20], [21, 25], [22, 22], [23, 19], [18, 24], [19, 21], [20, 18]],
-    "B'": [[0, 29], [1, 32], [2, 35], [51, 9], [52, 12], [53, 15], [35, 51], [32, 52], [29, 53], [15, 0], [12, 1], [9, 2], [44, 38], [43, 41], [42, 44], [41, 37], [40, 40], [39, 43], [38, 36], [37, 39], [36, 42]],
-    "U2": [[0, 8], [1, 7], [2, 6], [3, 5], [4, 4], [5, 3], [6, 2], [7, 1], [8, 0], [29, 11], [28, 10], [27, 9], [9, 27], [10, 28], [11, 29], [18, 36], [19, 37], [20, 38], [38, 20], [37, 19], [36, 18]],
-    "D2": [[51, 47], [52, 46], [53, 45], [48, 50], [49, 49], [50, 48], [45, 53], [46, 52], [47, 51], [35, 17], [34, 16], [33, 15], [15, 33], [16, 34], [17, 35], [24, 42], [25, 43], [26, 44], [44, 26], [43, 25], [42, 24]],
-    "L2": [[0, 45], [3, 48], [6, 51], [51, 6], [48, 3], [45, 0], [15, 11], [12, 14], [9, 17], [16, 10], [13, 13], [10, 16], [17, 9], [14, 12], [11, 15], [24, 38], [21, 41], [18, 44], [44, 18], [41, 21], [38, 24]],
-    "R2": [[2, 47], [5, 50], [8, 53], [53, 8], [50, 5], [47, 2], [35, 27], [32, 30], [29, 33], [34, 28], [31, 31], [28, 34], [33, 29], [30, 32], [27, 35], [26, 36], [23, 39], [20, 42], [42, 20], [39, 23], [36, 26]],
-    "F2": [[6, 47], [7, 46], [8, 45], [45, 8], [46, 7], [47, 6], [33, 11], [30, 14], [27, 17], [17, 27], [14, 30], [11, 33], [24, 20], [25, 19], [26, 18], [21, 23], [22, 22], [23, 21], [18, 26], [19, 25], [20, 24]],
-    "B2": [[0, 53], [1, 52], [2, 51], [51, 2], [52, 1], [53, 0], [35, 9], [32, 12], [29, 15], [15, 29], [12, 32], [9, 35], [44, 36], [43, 37], [42, 38], [41, 39], [40, 40], [39, 41], [38, 42], [37, 43], [36, 44]]
-}
+fMoves = {  "U":  [[0, 2], [1, 5], [2, 8], [3, 1], [4, 4], [5, 7], [6, 0], [7, 3], [8, 6], [29, 20], [28, 19], [27, 18], [9, 36], [10, 37], [11, 38], [18, 9], [19, 10], [20, 11], [38, 29], [37, 28], [36, 27]],
+            "D":  [[51, 45], [52, 48], [53, 51], [48, 46], [49, 49], [50, 52], [45, 47], [46, 50], [47, 53], [35, 44], [34, 43], [33, 42], [15, 24], [16, 25], [17, 26], [24, 33], [25, 34], [26, 35], [44, 17], [43, 16], [42, 15]],
+            "L":  [[0, 18], [3, 21], [6, 24], [51, 38], [48, 41], [45, 44], [15, 9], [12, 10], [9, 11], [16, 12], [13, 13], [10, 14], [17, 15], [14, 16], [11, 17], [24, 51], [21, 48], [18, 45], [44, 0], [41, 3], [38, 6]],
+            "R":  [[2, 42], [5, 39], [8, 36], [53, 26], [50, 23], [47, 20], [35, 33], [32, 34], [29, 35], [34, 30], [31, 31], [28, 32], [33, 27], [30, 28], [27, 29], [26, 8], [23, 5], [20, 2], [42, 47], [39, 50], [36, 53]],
+            "F":  [[6, 27], [7, 30], [8, 33], [45, 11], [46, 14], [47, 17], [33, 45], [30, 46], [27, 47], [17, 6], [14, 7], [11, 8], [24, 18], [25, 21], [26, 24], [21, 19], [22, 22], [23, 25], [18, 20], [19, 23], [20, 26]],
+            "B":  [[0, 15], [1, 12], [2, 9], [51, 35], [52, 32], [53, 29], [35, 2], [32, 1], [29, 0], [15, 53], [12, 52], [9, 51], [44, 42], [43, 39], [42, 36], [41, 43], [40, 40], [39, 37], [38, 44], [37, 41], [36, 38]],
+            "U'": [[0, 6], [1, 3], [2, 0], [3, 7], [4, 4], [5, 1], [6, 8], [7, 5], [8, 2], [29, 38], [28, 37], [27, 36], [9, 18], [10, 19], [11, 20], [18, 27], [19, 28], [20, 29], [38, 11], [37, 10], [36, 9]],
+            "D'": [[51, 53], [52, 50], [53, 47], [48, 52], [49, 49], [50, 46], [45, 51], [46, 48], [47, 45], [35, 26], [34, 25], [33, 24], [15, 42], [16, 43], [17, 44], [24, 15], [25, 16], [26, 17], [44, 35], [43, 34], [42, 33]],
+            "L'": [[0, 44], [3, 41], [6, 38], [51, 24], [48, 21], [45, 18], [15, 17], [12, 16], [9, 15], [16, 14], [13, 13], [10, 12], [17, 11], [14, 10], [11, 9], [24, 6], [21, 3], [18, 0], [44, 45], [41, 48], [38, 51]],
+            "R'": [[2, 20], [5, 23], [8, 26], [53, 36], [50, 39], [47, 42], [35, 29], [32, 28], [29, 27], [34, 32], [31, 31], [28, 30], [33, 35], [30, 34], [27, 33], [26, 53], [23, 50], [20, 47], [42, 2], [39, 5], [36, 8]],
+            "F'": [[6, 17], [7, 14], [8, 11], [45, 33], [46, 30], [47, 27], [33, 8], [30, 7], [27, 6], [17, 47], [14, 46], [11, 45], [24, 26], [25, 23], [26, 20], [21, 25], [22, 22], [23, 19], [18, 24], [19, 21], [20, 18]],
+            "B'": [[0, 29], [1, 32], [2, 35], [51, 9], [52, 12], [53, 15], [35, 51], [32, 52], [29, 53], [15, 0], [12, 1], [9, 2], [44, 38], [43, 41], [42, 44], [41, 37], [40, 40], [39, 43], [38, 36], [37, 39], [36, 42]],
+            "U2": [[0, 8], [1, 7], [2, 6], [3, 5], [4, 4], [5, 3], [6, 2], [7, 1], [8, 0], [29, 11], [28, 10], [27, 9], [9, 27], [10, 28], [11, 29], [18, 36], [19, 37], [20, 38], [38, 20], [37, 19], [36, 18]],
+            "D2": [[51, 47], [52, 46], [53, 45], [48, 50], [49, 49], [50, 48], [45, 53], [46, 52], [47, 51], [35, 17], [34, 16], [33, 15], [15, 33], [16, 34], [17, 35], [24, 42], [25, 43], [26, 44], [44, 26], [43, 25], [42, 24]],
+            "L2": [[0, 45], [3, 48], [6, 51], [51, 6], [48, 3], [45, 0], [15, 11], [12, 14], [9, 17], [16, 10], [13, 13], [10, 16], [17, 9], [14, 12], [11, 15], [24, 38], [21, 41], [18, 44], [44, 18], [41, 21], [38, 24]],
+            "R2": [[2, 47], [5, 50], [8, 53], [53, 8], [50, 5], [47, 2], [35, 27], [32, 30], [29, 33], [34, 28], [31, 31], [28, 34], [33, 29], [30, 32], [27, 35], [26, 36], [23, 39], [20, 42], [42, 20], [39, 23], [36, 26]],
+            "F2": [[6, 47], [7, 46], [8, 45], [45, 8], [46, 7], [47, 6], [33, 11], [30, 14], [27, 17], [17, 27], [14, 30], [11, 33], [24, 20], [25, 19], [26, 18], [21, 23], [22, 22], [23, 21], [18, 26], [19, 25], [20, 24]],
+            "B2": [[0, 53], [1, 52], [2, 51], [51, 2], [52, 1], [53, 0], [35, 9], [32, 12], [29, 15], [15, 29], [12, 32], [9, 35], [44, 36], [43, 37], [42, 38], [41, 39], [40, 40], [39, 41], [38, 42], [37, 43], [36, 44]] }
 
-gMoves = {
-    "U": gMove("U", np.array([0, 1, 0]),  270,  lambda pos: pos[y] > 0),
-    "D": gMove("D", np.array([0, -1, 0]), 270,  lambda pos: pos[y] < 0),
-    "R": gMove("R", np.array([1, 0, 0]),  270,  lambda pos: pos[x] > 0),
-    "L": gMove("L", np.array([-1, 0, 0]), 270,  lambda pos: pos[x] < 0),
-    "F": gMove("F", np.array([0, 0, 1]),  270,  lambda pos: pos[z] > 0),
-    "B": gMove("B", np.array([0, 0, -1]), 270,  lambda pos: pos[z] < 0),
-    "U'": gMove("U'", np.array([0, 1, 0]),  90,  lambda pos: pos[y] > 0),
-    "D'": gMove("D'", np.array([0, -1, 0]), 90,  lambda pos: pos[y] < 0),
-    "R'": gMove("R'", np.array([1, 0, 0]),  90,  lambda pos: pos[x] > 0),
-    "L'": gMove("L'", np.array([-1, 0, 0]), 90,  lambda pos: pos[x] < 0),
-    "F'": gMove("F'", np.array([0, 0, 1]),  90,  lambda pos: pos[z] > 0),
-    "B'": gMove("B'", np.array([0, 0, -1]), 90,  lambda pos: pos[z] < 0),
-    "U2": gMove("U2", np.array([0, 1, 0]),  180,  lambda pos: pos[y] > 0),
-    "D2": gMove("D2", np.array([0, -1, 0]), 180,  lambda pos: pos[y] < 0),
-    "R2": gMove("R2", np.array([1, 0, 0]),  180,  lambda pos: pos[x] > 0),
-    "L2": gMove("L2", np.array([-1, 0, 0]), 180,  lambda pos: pos[x] < 0),
-    "F2": gMove("F2", np.array([0, 0, 1]),  180,  lambda pos: pos[z] > 0),
-    "B2": gMove("B2", np.array([0, 0, -1]), 180,  lambda pos: pos[z] < 0)
-}
+gMoves = { "U": gMove("U", np.array([0, 1, 0]),  270,  lambda pos: pos[y] > 0),
+            "D": gMove("D", np.array([0, -1, 0]), 270,  lambda pos: pos[y] < 0),
+            "R": gMove("R", np.array([1, 0, 0]),  270,  lambda pos: pos[x] > 0),
+            "L": gMove("L", np.array([-1, 0, 0]), 270,  lambda pos: pos[x] < 0),
+            "F": gMove("F", np.array([0, 0, 1]),  270,  lambda pos: pos[z] > 0),
+            "B": gMove("B", np.array([0, 0, -1]), 270,  lambda pos: pos[z] < 0),
+            "U'": gMove("U'", np.array([0, 1, 0]),  90,  lambda pos: pos[y] > 0),
+            "D'": gMove("D'", np.array([0, -1, 0]), 90,  lambda pos: pos[y] < 0),
+            "R'": gMove("R'", np.array([1, 0, 0]),  90,  lambda pos: pos[x] > 0),
+            "L'": gMove("L'", np.array([-1, 0, 0]), 90,  lambda pos: pos[x] < 0),
+            "F'": gMove("F'", np.array([0, 0, 1]),  90,  lambda pos: pos[z] > 0),
+            "B'": gMove("B'", np.array([0, 0, -1]), 90,  lambda pos: pos[z] < 0),
+            "U2": gMove("U2", np.array([0, 1, 0]),  180,  lambda pos: pos[y] > 0),
+            "D2": gMove("D2", np.array([0, -1, 0]), 180,  lambda pos: pos[y] < 0),
+            "R2": gMove("R2", np.array([1, 0, 0]),  180,  lambda pos: pos[x] > 0),
+            "L2": gMove("L2", np.array([-1, 0, 0]), 180,  lambda pos: pos[x] < 0),
+            "F2": gMove("F2", np.array([0, 0, 1]),  180,  lambda pos: pos[z] > 0),
+            "B2": gMove("B2", np.array([0, 0, -1]), 180,  lambda pos: pos[z] < 0), }
 
 solvedCube = "UUUUUUUUULLLLLLLLLFFFFFFFFFRRRRRRRRRBBBBBBBBBDDDDDDDDD"
 solvedCubeAfter = "UUUUUUUUULLLLLLLLLFFFFFFFFFRRRRRRRRRBBBBBBBBBDDDDDDDDD"
-solvedGCube = [
-    Sticker(np.array([x, 3, y]), np.array([x, 3, y])) if f == 0 else
-    Sticker(np.array([x, -3, y]), np.array([x, -3, y])) if f == 1 else
-    Sticker(np.array([3, x, y]), np.array([3, x, y])) if f == 2 else
-    Sticker(np.array([-3, x, y]), np.array([-3, x, y])) if f == 3 else
-    Sticker(np.array([x, y, 3]), np.array([x, y, 3])) if f == 4 else
-    Sticker(np.array([x, y, -3]), np.array([x, y, -3]))
-    for f in range(6)
-    for i in range(3)
-    for j in range(3)
-    for x, y in [((-2 + j * 2), (-2 + i * 2))]
-]
+solvedGCube = [ Sticker(np.array([x, 3, y]), np.array([x, 3, y])) if f == 0 else
+                Sticker(np.array([x, -3, y]), np.array([x, -3, y])) if f == 1 else
+                Sticker(np.array([3, x, y]), np.array([3, x, y])) if f == 2 else
+                Sticker(np.array([-3, x, y]), np.array([-3, x, y])) if f == 3 else
+                Sticker(np.array([x, y, 3]), np.array([x, y, 3])) if f == 4 else
+                Sticker(np.array([x, y, -3]), np.array([x, y, -3]))
+                for f in range(6)
+                for i in range(3)
+                for j in range(3)
+                for x, y in [((-2 + j * 2), (-2 + i * 2))] ]
 
 # --------------------------------- solver -----------------------------------------------
 stdMoves = ["U", "U'", "U2", "D", "D'", "D2", "L", "L'", "L2", "R", "R'", "R2", "F", "F'", "F2", "B", "B'", "B2"]
 ifCube = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53]
 ifCubeAfter = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53]
 
-def getMaskedCube(ifcube, mask):
+def getMaskedCube(ifcube, mask, letter):
     maskedCube = ""
     for index in ifcube:
         if index not in mask:
-            maskedCube += "X"
+            maskedCube += letter
         else:
             maskedCube += "ULFRBD"[math.floor(index / 9)]
-    # print(maskedCube)
     return maskedCube
 
 def genPruningTable(solvedStates, depth, moveset):
@@ -319,49 +316,58 @@ def genPruningTable(solvedStates, depth, moveset):
                     frontier.append(newState)
         previousFrontier = frontier
 
-    with open("pruningtable.txt", "w") as file:
+    with open("g1PruningTable.py", "w") as file:
+        file.write("table = {")
         for key, value in pruningTable.items():
-            file.write(f"{key}:{value}\n")
-
+            file.write(f"'{key}':{value},\n")
+        file.write("}")
     return pruningTable
 
-
 class SimpleSolver:
-    def __init__(self, isSolved, candidateMoves, pruningTable, pruningDepth):
+    def __init__(self, isSolved, candidateMoves, pruningTable, pruningDepth, pieces):
         self.isSolved = isSolved
         self.moves = candidateMoves
         self.pruningTable = pruningTable
         self.pruningDepth = pruningDepth
+        self.pieces = pieces
 
 # first block solver
 fbPieces = [12, 13, 14, 15, 16, 17, 21, 24, 41, 44, 45, 48, 51]
-def fbIsSolved(fcube):
-    FBFACES = getFacesFromIndex(fbPieces)
-    for i in range(len(fbPieces)):
-        if (fcube[fbPieces[i]] != FBFACES[i]):
+def fbIsSolved(fcube, pieces):
+    FBFACES = getFacesFromIndex(pieces)
+    for i in range(len(pieces)):
+        if (fcube[pieces[i]] != FBFACES[i]):
             return False
     return True
-fbPruningDepth = 5
-fbPruningTable = genPruningTable([getMaskedCube(ifCube, fbPieces)], fbPruningDepth, stdMoves)
-simplefbSolver = SimpleSolver(fbIsSolved, stdMoves, fbPruningTable, fbPruningDepth)
+simplefbSolver = SimpleSolver(fbIsSolved, stdMoves, fbPruningTable.table, 5, fbPieces)
 
-# depth first search
-def solvedfs(solver, cube, solution, depthRemaining):
-    if solver.isSolved(cube):
-        return solution.strip()
-    if (depthRemaining == 0):
-        return None
-    for move in solver.moves:
-        result = solvedfs(solver, applyFmoves(cube, move), solution + " " + str(move), depthRemaining - 1,)
-        if result != None:
-            return result
-    return None
+# g1 solver
+def g1IsSolved(fcube, pieces):
+    FBFACES = "oooooooooooo"
+    for i in range(len(pieces)):
+        if (fcube[pieces[i]] != FBFACES[i]):
+            return False
+    return True
+
+g1Peices = [1, 3, 5, 7, 46, 48, 50, 52, 21, 23, 39, 41]
+g1Mask = "".join("o" if i in g1Peices else "X" for i in ifCube)
+g1MaskAfter = "".join("o" if i in g1Peices else "X" for i in ifCube)
+g1MoveSet = stdMoves
+# genPruningTable([g1Mask], 8, g1MoveSet)
+g1Solver = SimpleSolver(g1IsSolved, g1MoveSet, g1PruningTable.table, 5, g1Peices)
+
+# g2 solver
+
+# g3 solver
+
+# g4 solver
 
 def solvedfsWithPruning(solver, cube, solution, depthRemaining):
-    if solver.isSolved(cube):
+    if solver.isSolved(cube, solver.pieces):
         return solution.strip()
 
     # pruning
+    print(solution)
     lowerBound = solver.pruningTable.get(cube)
     if lowerBound == None:
         lowerBound = solver.pruningDepth + 1
@@ -375,14 +381,6 @@ def solvedfsWithPruning(solver, cube, solution, depthRemaining):
         result = solvedfsWithPruning(solver, applyFmoves(cube, move), solution + " " + str(move), depthRemaining - 1,)
         if result != None:
             return result
-    return None
-
-# iteratively deepening dfs
-def solveiddfs(solver, cube, depthLimit):
-    for depth in range(depthLimit):
-        solution = solvedfs(solver, cube, "", depth + 1)
-        if (solution != None):
-            return solution
     return None
 
 # iteratively deepening dfs
@@ -428,30 +426,30 @@ while running:
 
             if event.key == pygame.K_g:
                 startTime = time.perf_counter()
-                genPruningTable([getMaskedCube(ifCube, fbPieces)], 5, stdMoves)
+                genPruningTable([getMaskedCube(ifCube, fbPieces, "X")], 5, stdMoves)
                 endTime = time.perf_counter()
                 totalTime = endTime - startTime
                 print(f"Generated pruning table in {totalTime:.2f} seconds")
 
-            # R D2 L F2 L U2 F2 L' B2 R2 F2 R2 D' R' U' R' F' R2 D' B' L'
-            # F D2 L' B' D'
-            # Solved in 3.61 seconds  without print statement for every move
-            # Solved in 53.66 seconds with print statements
+            # test solver
             if event.key == pygame.K_s:
-                scramble = "F2 L B2 R' B2 R B2 L F2 D2 R2 B L' R' F U' R' B2 L' B2"
+                
+                # scramble = "B L2 B' L2 B D' B' L' B L B D B2 L"
+                # scramble = "D R U R' U' R U R' U' D U R U' R' U R U' R' D2"
+                scramble = "L2 U' R2 U' F2 R2 U2 L2 D' F2 L2 B F R U' F2 R' F2 R2 F'"
                 solvedCube = applyFmoves(solvedCube, scramble)          
-                ifCube = applyIFmoves(ifCube, scramble)
+                g1Mask = applyFmoves(g1Mask, scramble)     
                 solvedCubeAfter = solvedCube       
-                ifCubeAfter = ifCube
+                g1MaskAfter = g1Mask
 
                 startTime = time.perf_counter()
-                solution = solveiddfs2(simplefbSolver, getMaskedCube(ifCube, fbPieces), 10)
+                solution = solveiddfs2(g1Solver, g1Mask, 8)
                 endTime = time.perf_counter()
 
                 if solution != None:
                     if len(solution) > 0:
                         solvedCubeAfter = applyFmoves(solvedCube, solution)
-                        ifCubeAfter = applyIFmoves(ifCube, solution)
+                        g1MaskAfter = applyFmoves(g1MaskAfter, solution)
                         print(solution)
                         totalTime = endTime - startTime
                         print(f"Solved in {totalTime:.2f} seconds")
@@ -496,11 +494,8 @@ while running:
 
     drawState(solvedCube, 100, 100)
     drawState(solvedCubeAfter, 100, 350)
-    drawState(getMaskedCube(ifCube, fbPieces), 450, 100)
-    drawState(getMaskedCube(ifCubeAfter, fbPieces), 450, 350)
-
-    # drawState("XXXXXXXXXXXXLLLXXBXXXFXXLLLXXXXXXFXXXXXXXBXXXDDDXXXXXX", 800, 100)
-
+    drawState(g1Mask, 450, 100)
+    drawState(g1MaskAfter, 450, 350)
 
     # flip() the display to put your work on screen
     pygame.display.flip()
