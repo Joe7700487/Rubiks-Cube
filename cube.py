@@ -212,32 +212,6 @@ def convertGcube(gcube):
             sCube += getColor(sticker)
     return sCube
 
-# functions to return the fcube index of a gcube sticker  used to convert moves
-# def getIndexPos(gcube, sticker):
-#     face = getFace(sticker)
-#     stickers = sortFace(gcube, face)
-#     for s in stickers:
-#         if s.pos[x] == sticker.pos[x] and s.pos[y] == sticker.pos[y] and s.pos[z] == sticker.pos[z]:
-#             index = stickers.index(s)
-#             return S(face, index) + 1
-# def getIndexDst(gcube, sticker):
-#     stickers = sortFace(gcube, "U") + sortFace(gcube, "L") + sortFace(gcube, "F") + sortFace(gcube, "R") + sortFace(gcube, "B") + sortFace(gcube, "D")
-#     for s in stickers:
-#         if s.pos[x] == sticker.dst[x] and s.pos[y] == sticker.dst[y] and s.pos[z] == sticker.dst[z]:
-#             face = getFace(s)
-#             stickers = sortFace(gcube, face)
-#             index = stickers.index(s)
-#             return S(face, index) + 1
-
-# # create a [src, dst] pair for every sticker involved in the move and put it in a list and output move to console
-# def convertGmove(gMove, gCube):
-#     move = []
-#     applyGMove(gCube, gMove)
-#     for sticker in gCube:
-#         if gMove.predicate(sticker.pos):
-#             move.append([getIndexDst(gCube, sticker), getIndexPos(gCube, sticker)])
-#     print(gMove.name.lower() + "Move = " + str(move))
-
 # ------------------------------ define solved cubes and legal moves --------------------------
 # moves defined by permutation pairs
 fMoves = {  "U":  [[0, 2], [1, 5], [2, 8], [3, 1], [4, 4], [5, 7], [6, 0], [7, 3], [8, 6], [29, 20], [28, 19], [27, 18], [9, 36], [10, 37], [11, 38], [18, 9], [19, 10], [20, 11], [38, 29], [37, 28], [36, 27]],
@@ -294,7 +268,8 @@ solvedGCube = [ Sticker(np.array([x, 3, y]), np.array([x, 3, y])) if f == 0 else
 # --------------------------------- solver -----------------------------------------------
 stdMoves = ["U", "U'", "U2", "D", "D'", "D2", "L", "L'", "L2", "R", "R'", "R2", "F", "F'", "F2", "B", "B'", "B2"]
 ifCube = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53]
-ifCubeAfter = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53]
+cornerPeices = [0, 2, 6, 8, 45, 47, 51, 53, 9, 11, 15, 17, 27, 29, 33, 35, 36, 38, 42, 44, 18, 20, 24, 26]
+edgePeices = [10, 12, 14, 16, 19, 21, 23, 25, 28, 30, 32, 34, 37, 39, 41, 43]
 
 def genPruningTable(solvedStates, depth, moveset):
     pruningTable = {}
@@ -320,6 +295,8 @@ def genPruningTable(solvedStates, depth, moveset):
         file.write("}")
     return pruningTable
 
+# solvers require a function to determine if a state is solved, permitted moves, pruning table, 
+# depth of the pruningtable, and what peices the solver needs to look at
 class SimpleSolver:
     def __init__(self, isSolved, candidateMoves, pruningTable, pruningDepth, pieces):
         self.isSolved = isSolved
@@ -328,7 +305,6 @@ class SimpleSolver:
         self.pruningDepth = pruningDepth
         self.pieces = pieces
 
-
 # g1 solver
 def g1IsSolved(fcube, pieces):
     FBFACES = "oooooooooooo"
@@ -336,12 +312,8 @@ def g1IsSolved(fcube, pieces):
         if (fcube[pieces[i]] != FBFACES[i]):
             return False
     return True
-
 g1Peices = [1, 3, 5, 7, 46, 48, 50, 52, 21, 23, 39, 41]
-g1Mask = "".join("o" if i in g1Peices else "X" for i in ifCube)
-g1MaskAfter = "".join("o" if i in g1Peices else "X" for i in ifCube)
 g1MoveSet = stdMoves
-# genPruningTable([g1Mask], 8, g1MoveSet)
 g1Solver = SimpleSolver(g1IsSolved, g1MoveSet, g1PruningTable.table, 5, g1Peices)
 
 # g2 solver
@@ -355,10 +327,7 @@ g2CornerPeices = [0, 2, 6, 8, 45, 47, 51, 53]
 g2udEdgePeices = [1, 3, 5, 7, 46, 48, 50, 52]
 g2eEdgePeices = [21, 23, 39, 41]
 g2Peices = sorted(g2CornerPeices + g2udEdgePeices + g2eEdgePeices)
-g2Mask = "".join("x" if c in g2CornerPeices or c in g2udEdgePeices else "y" if c in g2eEdgePeices else "X" for c in ifCube)
-g2MaskAfter = g2Mask
 g2MoveSet = ["U", "U'", "U2", "D", "D'", "D2", "L", "L'", "L2", "R", "R'", "R2", "F2", "B2"]
-# genPruningTable([g2Mask], 6, g2MoveSet)
 g2Solver = SimpleSolver(g2IsSolved, g2MoveSet, g2PruningTable.table, 5, g2Peices)
 
 # g3 solver
@@ -369,26 +338,8 @@ def g3IsSolved(fcube, pieces):
     else:
         return False
 g3MoveSet = ["U", "U'", "U2", "D", "D'", "D2", "L2", "R2", "F2", "B2"]
-cornerPeices = [0, 2, 6, 8, 45, 47, 51, 53, 9, 11, 15, 17, 27, 29, 33, 35, 36, 38, 42, 44, 18, 20, 24, 26]
-edgePeices = [10, 12, 14, 16, 19, 21, 23, 25, 28, 30, 32, 34, 37, 39, 41, 43]
 g3Peices = sorted(cornerPeices + edgePeices)
-cornerMask = "UXUXXXUXULXLXXXLXLFXFXXXFXFRXRXXXRXRBXBXXXBXBDXDXXXDXD"
-g3Mask = ""
-for i in range(len(ifCube)):
-    if ifCube[i] in cornerPeices:
-        g3Mask += getFacesFromIndex([ifCube[i]])
-    elif ifCube[i] in edgePeices:
-        face = getFacesFromIndex([ifCube[i]])
-        if face == "L": face = "R"
-        if face == "B": face = "F"
-        g3Mask += face
-    else:
-        g3Mask += "X"
-g3MaskAfter = g3Mask
-# genPruningTable([g3Mask], 10, ["U2", "D2", "L2", "R2", "F2", "B2"])
-# genPruningTable(list(g3SolvedStates.table.keys()), 5, g3MoveSet)
 g3Solver = SimpleSolver(g3IsSolved, g3MoveSet, g3PruningTable.table, 5, g3Peices)
-
 
 # g4 solver
 def g4IsSolved(fcube, pieces):
@@ -419,6 +370,9 @@ def solvedfsWithPruning(solver, cube, solution, depthRemaining):
     return None
 
 # iteratively deepening dfs
+# function to actually solve positions
+# requires a solver object, a cube and search depth limit
+# peices of the cube that dont change the state should be left gray(X) 
 def solveiddfs2(solver, maskedCube, depthLimit):
     for depth in range(depthLimit):
         solution = solvedfsWithPruning(solver, maskedCube, "", depth + 1)
@@ -434,34 +388,8 @@ while running:
         if event.type == pygame.QUIT:
             running = False
         if event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_u:
-                solvedCube = applyFmoves(solvedCube, "U")
-                # applyGMove(solvedGCube, "U")
-                # solvedCube = convertGcube(solvedGCube)
-            if event.key == pygame.K_r:
-                solvedCube = applyFmoves(solvedCube, "R")
-                # applyGMove(solvedGCube, "R")
-                # solvedCube = convertGcube(solvedGCube)
-            if event.key == pygame.K_l:
-                solvedCube = applyFmoves(solvedCube, "L")
-                # applyGMove(solvedGCube, "L")
-                # solvedCube = convertGcube(solvedGCube)
-            if event.key == pygame.K_d:
-                solvedCube = applyFmoves(solvedCube, "D")
-                # applyGMove(solvedGCube, "D")
-                # solvedCube = convertGcube(solvedGCube)
-            if event.key == pygame.K_f:
-                solvedCube = applyFmoves(solvedCube, "F")
-                # applyGMove(solvedGCube, "F")
-                # solvedCube = convertGcube(solvedGCube)
-            if event.key == pygame.K_b:
-                solvedCube = applyFmoves(solvedCube, "B")
-                # applyGMove(solvedGCube, gMoves["B"])
-                # solvedCube = convertGcube(solvedGCube)
-
             # test solver
             if event.key == pygame.K_s:
-                
                 # scramble = "B L2 B' L2 B D' B' L' B L B D B2 L"
                 # scramble = "D R U R' U' R U R' U' D U R U' R' U R U' R' D2"
                 scramble = "F D2 F D2 F' L2 D2 B2 L2 B' D2 R D' R' U2 B D F D2 L2"
@@ -473,12 +401,12 @@ while running:
 
                 solution = ""
                 part1 = solveiddfs2(g1Solver, "".join("o" if i in g1Peices else "X" for i in ifCube), 10)
-                solvedCubeAfter = applyFmoves(solvedCube, part1)
-                ifCube = applyIFmoves(ifCube, part1)
+                if len(part1) > 0: solvedCubeAfter = applyFmoves(solvedCube, part1)
+                if len(part1) > 0: ifCube = applyIFmoves(ifCube, part1)
 
                 part2 = solveiddfs2(g2Solver, "".join("x" if c in g2CornerPeices or c in g2udEdgePeices else "y" if c in g2eEdgePeices else "X" for c in ifCube), 20)
-                solvedCubeAfter = applyFmoves(solvedCubeAfter, part2)
-                ifCube = applyIFmoves(ifCube, part2)
+                if len(part2) > 0: solvedCubeAfter = applyFmoves(solvedCubeAfter, part2)
+                if len(part2) > 0: ifCube = applyIFmoves(ifCube, part2)
                 
                 g3Mask = ""
                 for i in range(len(ifCube)):
@@ -492,18 +420,18 @@ while running:
                     else:
                         g3Mask += "X"
                 part3 = solveiddfs2(g3Solver, g3Mask, 20)
-                solvedCubeAfter = applyFmoves(solvedCubeAfter, part3)
-                ifCube = applyIFmoves(ifCube, part3)
+                if len(part3) > 0: solvedCubeAfter = applyFmoves(solvedCubeAfter, part3)
+                if len(part3) > 0: ifCube = applyIFmoves(ifCube, part3)
 
                 part4 = solveiddfs2(g4Solver, solvedCubeAfter, 20)
-                solvedCubeAfter = applyFmoves(solvedCubeAfter, part4)
-                ifCube = applyIFmoves(ifCube, part4)
+                if len(part4) > 0: solvedCubeAfter = applyFmoves(solvedCubeAfter, part4)
+                if len(part4) > 0: ifCube = applyIFmoves(ifCube, part4)
                 solution = part1 + " " + part2 + " "  + part3 + " "  + part4
+
                 endTime = time.perf_counter()
 
                 if solution != None:
                     if len(solution) > 0:
-                        solvedCubeAfter = applyFmoves(solvedCube, solution)
                         print(len(solution.split()))
                         print(solution)
                         totalTime = endTime - startTime
@@ -513,44 +441,11 @@ while running:
                 else:
                     print("out of range")
 
-            # test efficiency of model types
-            #Facelet model: 
-            # 100026 moves in 108 miliseconds 922237.76 Moves per sec version 1
-            # 100026 moves in 70 miliseconds 1427327.94 Moves per sec version 2
-            # Geometric model: 
-            # 100026 moves in 69620 miliseconds 1436.74 Moves per sec
-            loops = 5557
-            if event.key == pygame.K_t:
-                print("----------------------------------")
-                moveCount = loops * 18
-                startTime = time.perf_counter()
-                for i in range(loops): solvedCube = applyFmoves(solvedCube, "U D L R F B U' D' L' R' F' B' U2 D2 L2 R2 F2 B2")
-                endTime = time.perf_counter()
-
-                totalTime = endTime - startTime
-                rate = (moveCount / totalTime)
-                print("Facelet model: ")
-                print(f"{moveCount:.0f} moves in {totalTime * 1000:.0f} miliseconds {rate:.2f} Moves per sec")
-
-                # startTime = time.perf_counter()
-                # for i in range(loops): applyGmoves(solvedGCube, "U D L R F B U' D' L' R' F' B' U2 D2 L2 R2 F2 B2")
-                # endTime = time.perf_counter()
-
-                # totalTime = endTime - startTime
-                # rate = (moveCount / totalTime)
-                # print("Geometric model: ")
-                # print(f"{moveCount:.0f} moves in {totalTime * 1000:.0f} miliseconds {rate:.2f} Moves per sec")
-                # solvedCube = convertGcube(solvedGCube)
-
-
-
     # fill the screen with a color to wipe away anything from last frame
     screen.fill((100,100,100))
 
     drawState(solvedCube, 100, 100)
     drawState(solvedCubeAfter, 100, 350)
-    # drawState(g3Mask, 450, 100)
-    # drawState(g3MaskAfter, 450, 350)
 
     # flip() the display to put your work on screen
     pygame.display.flip()
