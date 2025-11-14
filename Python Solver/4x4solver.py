@@ -3,11 +3,7 @@ import pygame
 import numpy as np
 import math
 import time
-import g1PruningTable
-import g2PruningTable
-import g3SolvedStates
-import g3PruningTable
-import g4PruningTable
+import f2cPruningTable
 
 # pygame setup
 pygame.init()
@@ -20,7 +16,7 @@ dt = 0
 x = 0
 y = 1
 z = 2
-size = 25
+size = 15
 # offsets for drawing faces
 uOffset = (size * 4, size * 0)
 lOffset = (size * 0, size * 4)
@@ -41,7 +37,6 @@ purple  = (138,43,226)
 pink  = (255,0,255)
 
 # ------------------------------------------ fcube logic -----------------------------------
-
 # return the fcube index from the index of a face
 def S(face, idx):
     idx = idx - 1
@@ -278,23 +273,14 @@ gMoves = {  "U":  gMove("U", np.array([0, 2, 0]),  270,  lambda pos: pos[y] > 1)
             "F2": gMove("F2", np.array([0, 0, 1]),  180,  lambda pos: pos[z] > 1),
             "B2": gMove("B2", np.array([0, 0, -1]), 180,  lambda pos: pos[z] < -1), 
             "Uw":  gMove("Uw", np.array([0, 1, 0]),  270,  lambda pos: pos[y] > 0),
-            "Dw":  gMove("Dw", np.array([0, -1, 0]), 270,  lambda pos: pos[y] < 0),
             "Rw":  gMove("Rw", np.array([1, 0, 0]),  270,  lambda pos: pos[x] > 0),
-            "Lw":  gMove("Lw", np.array([-1, 0, 0]), 270,  lambda pos: pos[x] < 0),
             "Fw":  gMove("Fw", np.array([0, 0, 1]),  270,  lambda pos: pos[z] > 0),
-            "Bw":  gMove("Bw", np.array([0, 0, -1]), 270,  lambda pos: pos[z] < 0),
             "Uw'": gMove("Uw'", np.array([0, 1, 0]),  90,  lambda pos: pos[y] > 0),
-            "Dw'": gMove("Dw'", np.array([0, -1, 0]), 90,  lambda pos: pos[y] < 0),
             "Rw'": gMove("Rw'", np.array([1, 0, 0]),  90,  lambda pos: pos[x] > 0),
-            "Lw'": gMove("Lw'", np.array([-1, 0, 0]), 90,  lambda pos: pos[x] < 0),
             "Fw'": gMove("Fw'", np.array([0, 0, 1]),  90,  lambda pos: pos[z] > 0),
-            "Bw'": gMove("Bw'", np.array([0, 0, -1]), 90,  lambda pos: pos[z] < 0),
             "Uw2": gMove("Uw2", np.array([0, 1, 0]),  180,  lambda pos: pos[y] > 0),
-            "Dw2": gMove("Dw2", np.array([0, -1, 0]), 180,  lambda pos: pos[y] < 0),
             "Rw2": gMove("Rw2", np.array([1, 0, 0]),  180,  lambda pos: pos[x] > 0),
-            "Lw2": gMove("Lw2", np.array([-1, 0, 0]), 180,  lambda pos: pos[x] < 0),
-            "Fw2": gMove("Fw2", np.array([0, 0, 1]),  180,  lambda pos: pos[z] > 0),
-            "Bw2": gMove("Bw2", np.array([0, 0, -1]), 180,  lambda pos: pos[z] < 0) }
+            "Fw2": gMove("Fw2", np.array([0, 0, 1]),  180,  lambda pos: pos[z] > 0) }
 
 solvedCube = list("UUUUUUUUUUUUUUUULLLLLLLLLLLLLLLLFFFFFFFFFFFFFFFFRRRRRRRRRRRRRRRRBBBBBBBBBBBBBBBBDDDDDDDDDDDDDDDD")
 
@@ -308,31 +294,42 @@ solvedGCube = [ Sticker(np.array([x, 4, y]), np.array([x, 4, y])) if f == 0 else
                 for i in range(4)
                 for j in range(4)
                 for x, y in [((-3 + j * 2), (-3 + i * 2))] ]
+
 # --------------------------------- solver -----------------------------------------------
 stdMoves = ["U", "U'", "U2", "D", "D'", "D2", "L", "L'", "L2", "R", "R'", "R2", "F", "F'", "F2", "B", "B'", "B2",
             "Uw", "Uw'", "Uw2", "Rw", "Rw'", "Rw2", "Fw", "Fw'", "Fw2"]
-ifCube = []
-for i in range(len(solvedCube)):
-    ifCube.append(i)
+ifCube = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 
+          16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 
+          32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 
+          48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 
+          64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 
+          80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95]
+centers = [5, 6, 9, 10, 
+           21, 22, 25, 26, 
+           37, 38, 41, 42, 
+           53, 54, 57, 58, 
+           69, 70, 73, 74, 
+           85, 86, 89, 90]
 
-def genPruningTable(solvedStates, depth, moveset):
+
+def genPruningTable(solvedStates, depth, moveset, name):
     pruningTable = {}
     previousFrontier = solvedStates
 
     for state in solvedStates:
-        pruningTable[state] = 0
+        pruningTable["".join(state)] = 0
 
     for i in range(1, depth + 1):
         frontier = []
         for state in previousFrontier:
             for move in moveset:
-                newState = "".join(applyFmoves(state, move))
+                newState = "".join(applyFmoves(list(state), move))
                 if(newState not in pruningTable):
                     pruningTable[newState] = i
                     frontier.append(newState)
         previousFrontier = frontier
 
-    with open("g4PruningTable.py", "w") as file:
+    with open(name + ".py", "w") as file:
         file.write("table = {")
         for key, value in pruningTable.items():
             file.write(f"'{key}':{value},\n")
@@ -346,8 +343,18 @@ class SimpleSolver:
         self.isSolved = isSolved
         self.moves = candidateMoves
         self.pruningTable = pruningTable
-        self.pruningDepth = pruningDepth
+        self.pruningDepth = pruningDepth # max depth of the pruning table
         self.pieces = pieces
+
+# solve centers
+first2centers = [5, 6, 9, 10, 85, 86, 89, 90]
+def centersIsSolved (mask, pieces):
+    if mask == ['X', 'X', 'X', 'X', 'X', 'U', 'U', 'X', 'X', 'U', 'U', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'U', 'U', 'X', 'X', 'U', 'U', 'X', 'X', 'X', 'X', 'X']:
+        return True
+    else: return False
+f2cMask = list("U" if i in first2centers else "X" for i in ifCube)
+# genPruningTable([f2cMask], 7, stdMoves, "f2cPruningTable")
+f2cSolver = SimpleSolver(centersIsSolved, stdMoves, f2cPruningTable.table, 6, centers)
 
 ## IMPORTANT FUNCTIONS
 def solvedfsWithPruning(solver, cube, solution, depthRemaining):
@@ -355,7 +362,7 @@ def solvedfsWithPruning(solver, cube, solution, depthRemaining):
         return solution.strip()
 
     # pruning
-    lowerBound = solver.pruningTable.get(cube)
+    lowerBound = solver.pruningTable.get("".join(cube))
     if lowerBound == None:
         lowerBound = solver.pruningDepth + 1
     if lowerBound > depthRemaining:
@@ -382,6 +389,8 @@ def solveiddfs2(solver, maskedCube, depthLimit):
     return None
 
 # -------------------------------- program loop -------------------------------------------
+solvedCubeAfter = solvedCube
+f2cMaskAfter = f2cMask
 while running:
     # poll for events
     # pygame.QUIT event means the user clicked X to close your window
@@ -392,36 +401,33 @@ while running:
             if event.key == pygame.K_u:
                 # applyGmoves(solvedGCube, "U'")
                 # solvedCube = convertGcube(solvedGCube)
-                solvedCube = applyMove(solvedCube, "Uw")
-            if event.key == pygame.K_r:
-                # applyGmoves(solvedGCube, "U'")
-                # solvedCube = convertGcube(solvedGCube)
-                solvedCube = applyMove(solvedCube, "Rw")
+                solvedCube = applyFmoves(solvedCube, "Uw")
             if event.key == pygame.K_s:
-                convertGmove(gMoves["Rw"], solvedGCube)
-            if event.key == pygame.K_g:
-                for move in stdMoves:
-                    convertGmove(gMoves[move], solvedGCube)
-                    solvedGCube = [ Sticker(np.array([x, 4, y]), np.array([x, 4, y])) if f == 0 else
-                    Sticker(np.array([x, -4, y]), np.array([x, -4, y])) if f == 1 else
-                    Sticker(np.array([4, x, y]), np.array([4, x, y])) if f == 2 else
-                    Sticker(np.array([-4, x, y]), np.array([-4, x, y])) if f == 3 else
-                    Sticker(np.array([x, y, 4]), np.array([x, y, 4])) if f == 4 else
-                    Sticker(np.array([x, y, -4]), np.array([x, y, -4]))
-                    for f in range(6)
-                    for i in range(4)
-                    for j in range(4)
-                    for x, y in [((-3 + j * 2), (-3 + i * 2))] ]
+                scramble = "Fw2 Uw2 L U R' Uw2 U Rw2 R' D L' R F2 B' D' Fw' Rw2 Uw' Rw R' U F' Rw' Uw F2"
+                solvedCube = applyFmoves(solvedCube, scramble)
+                ifCube = applyFmoves(ifCube, scramble)
+                f2cMask = ["U" if st in first2centers else "X" for st in ifCube]
 
+                solution = solveiddfs2(f2cSolver, f2cMask, 10)
+
+                if solution != None:
+                    if len(solution) > 0:
+                        print(solution, len(solution.split(" ")))
+                        solvedCubeAfter = applyFmoves(solvedCube, solution)
+                        f2cMaskAfter = applyFmoves(f2cMask, solution)
+                    else:
+                        print("alreayd solved")
+                else:
+                    print("NOt found")
                 
-
-                
-
 
     # fill the screen with a color to wipe away anything from last frame
     screen.fill((100,100,100))
 
     drawState(solvedCube, 100, 100)
+    drawState(f2cMask, 100, 300)
+    drawState(solvedCubeAfter, 400, 100)
+    drawState(f2cMaskAfter, 400, 300)
 
     # flip() the display to put your work on screen
     pygame.display.flip()
