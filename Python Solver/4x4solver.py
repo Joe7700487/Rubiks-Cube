@@ -4,6 +4,7 @@ import numpy as np
 import math
 import time
 import f2cPruningTable
+import l4cPruningTable
 
 # pygame setup
 pygame.init()
@@ -346,7 +347,7 @@ class SimpleSolver:
         self.pruningDepth = pruningDepth # max depth of the pruning table
         self.pieces = pieces
 
-# solve centers
+# first 2 centers opposite
 first2centers = [5, 6, 9, 10, 85, 86, 89, 90]
 def centersIsSolved (mask, pieces):
     if mask == ['X', 'X', 'X', 'X', 'X', 'U', 'U', 'X', 'X', 'U', 'U', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'U', 'U', 'X', 'X', 'U', 'U', 'X', 'X', 'X', 'X', 'X']:
@@ -355,6 +356,27 @@ def centersIsSolved (mask, pieces):
 f2cMask = list("U" if i in first2centers else "X" for i in ifCube)
 # genPruningTable([f2cMask], 7, stdMoves, "f2cPruningTable")
 f2cSolver = SimpleSolver(centersIsSolved, stdMoves, f2cPruningTable.table, 6, centers)
+
+# last 4 centers opposite
+l4cMoves = ["U", "U'", "U2", "D", "D'", "D2", "L", "L'", "L2", "R", "R'", "R2", "F", "F'", "F2", "B", "B'", "B2",
+            "Uw", "Uw'", "Uw2"]
+last4centers = [ 21, 22, 25, 26, 37, 38, 41, 42, 53, 54, 57, 58, 69, 70, 73, 74, ]
+def l4cIsSolved (mask, pieces):
+    if mask == ['X', 'X', 'X', 'X', 'X', 'U', 'U', 'X', 'X', 'U', 'U', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'R', 'R', 'X', 'X', 'R', 'R', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'F', 'F', 'X', 'X', 'F', 'F', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'R', 'R', 'X', 'X', 'R', 'R', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'F', 'F', 'X', 'X', 'F', 'F', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'U', 'U', 'X', 'X', 'U', 'U', 'X', 'X', 'X', 'X', 'X']:
+        return True
+    else: return False
+l4cMask = []
+# for i in range(len(ifCube)):
+#     if ifCube[i] in centers:
+#         face = getFacesFromIndex([ifCube[i]])
+#         if face == "L": face = "R"
+#         if face == "B": face = "F"
+#         if face == "D": face = "U"
+#         l4cMask.append(face)
+#     else:
+#         l4cMask.append("X")
+# genPruningTable([l4cMask], 15, l4cMoves, "l4cPruningTable")
+l4cSolver = SimpleSolver(l4cIsSolved, l4cMoves, l4cPruningTable.table, 9, centers)
 
 ## IMPORTANT FUNCTIONS
 def solvedfsWithPruning(solver, cube, solution, depthRemaining):
@@ -404,11 +426,24 @@ while running:
                 solvedCube = applyFmoves(solvedCube, "Uw")
             if event.key == pygame.K_s:
                 scramble = "Fw2 Uw2 L U R' Uw2 U Rw2 R' D L' R F2 B' D' Fw' Rw2 Uw' Rw R' U F' Rw' Uw F2"
+                scramble += " U Fw R2 Uw L Rw Fw"
+
                 solvedCube = applyFmoves(solvedCube, scramble)
                 ifCube = applyFmoves(ifCube, scramble)
-                f2cMask = ["U" if st in first2centers else "X" for st in ifCube]
+                # f2cMask = ["U" if st in first2centers else "X" for st in ifCube]
+                # solution = solveiddfs2(f2cSolver, f2cMask, 10)
 
-                solution = solveiddfs2(f2cSolver, f2cMask, 10)
+                l4cMask = []
+                for i in range(len(ifCube)):
+                    if ifCube[i] in centers:
+                        face = getFacesFromIndex([ifCube[i]])
+                        if face == "L": face = "R"
+                        if face == "B": face = "F"
+                        if face == "D": face = "U"
+                        l4cMask.append(face)
+                    else:
+                        l4cMask.append("X")
+                solution = solveiddfs2(l4cSolver, l4cMask, 10)
 
                 if solution != None:
                     if len(solution) > 0:
