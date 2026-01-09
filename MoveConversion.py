@@ -1,306 +1,124 @@
+# vibe coded conversion script
+# convert a set of moves such that no moves effect the DFL corner
+# https://chatgpt.com/c/69605e09-b9cc-8326-891e-f7ca8e0f6b9f
 
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Rubik-style move converter with wide pivot support.
+# succesful prompt after many revisions:
+# create a python script that will convert an input of moves
+# the input will be a string of moves represented by letters separated by spaces
+# R, U, F, L, D and B
+# these letters could have a w suffix (ex. Rw)
+# a letter with or without a w suffix could also have either a "'" or a 2
+# Example of valid all R moves (R, R', R2, Rw, Rw', Rw2)
 
-Finalized rules:
-- Inputs will NOT include moves beginning with '3' (e.g., no 3Uw/Rw/Bw in input).
-- Wide pivots act even without a suffix: Lw, Dw, Fw are pivots.
-- Pivots convert themselves:
-    * L  -> 3Rw,  Lw -> Rw
-    * D  -> 3Uw,  Dw -> Uw
-    * F  -> 3Bw,  Fw -> Bw
-  (suffix "'" or "2" is preserved).
-- After converting the pivot, apply its mapping to ALL following moves.
-- Process moves left-to-right on the converted sequence (newly created L/D/F will act later when reached).
-- Base-face mappings DO NOT apply to 3w moves (3Uw/3Rw/3Bw). Only their special mappings apply.
-- IMPORTANT: Special mappings for 3w moves DO NOT apply when the 3w move has a '2' suffix.
-  (Prevents final 3Uw2 from being changed by a late L/D/F pivot.)
+# These are the conversion rules
 
-Mappings (unchanged):
-- L : base U→B, B→D, D→F, F→U; special 3Uw→F, 3Bw→U
-- F : base U→L, L→D, D→R, R→U; special 3Rw→D, 3Uw→R
-- D : base F→L, L→B, B→R, R→F; special 3Bw→D, 3Uw→R
+# When an L, F or D appears in the string, convert all following moves not including the current move in the string using the mappings below. Preserve any w, ', or 2 suffix in converted moves
+# Mappings (unchanged):
+# - L : base U→B, B→D, D→F, F→U;
+# - F : base U→L, L→D, D→R, R→U;
+# - D : base F→L, L→B, B→R, R→F;
+# If the L, F, or D have a "'" suffix, do all mappings in reverse (U > B becomes B < U)
 
-Double-turn pivots:
-- L2: U↔D, F↔B;  special 3Uw→U
-- F2: U↔D, R↔L;  special 3Rw→R
-- D2: F↔B, R↔L;  special 3Bw→B
+# If the current L, F or D move has a 2 suffix use these mappings
+# Double-turn mappings:
+# - L2: U↔D, F↔B;
+# - F2: U↔D, R↔L;
+# - D2: F↔B, R↔L;
 
-Suffixes:
-- Preserve each move’s own suffix (' or 2) after all conversions and mappings.
+# if the current L, F or D move contains a w suffix, convert it to R, B, and U respectively preserving any 2 or ' suffix
 
-CLI:
-- Run with no arguments to execute tests.
-- Run with a sequence string to convert it.
-- Run with `--debug "<sequence>"` to see step-by-step transformations.
-"""
+# Suffixes:
+# - Preserve each move’s own suffix (w, ', 2) after all conversions and mappings.
 
-from typing import List, Dict, Tuple
+# once you have gone through each move, convert these moves while preserving any suffix (L > 3Rw, D > 3Uw, F > 3Bw)
 
-# --------------------------
-# Move representation
-# --------------------------
+import re
 
-class Move:
-    def __init__(self, layer=None, base: str = '', wide: bool = False, suffix: str = ''):
-        self.layer = layer      # None or 3
-        self.base = base        # U,D,L,R,F,B
-        self.wide = wide        # True if 'w'
-        self.suffix = suffix    # '', "'", '2'
+# ---------- Parsing helpers ----------
 
-    def __str__(self) -> str:
-        return f"{'3' if self.layer==3 else ''}{self.base}{'w' if self.wide else ''}{self.suffix}"
+MOVE_RE = re.compile(r"^(R|U|F|L|D|B)(w?)(2|'?)$")
 
+def parse_move(move):
+    m = MOVE_RE.match(move)
+    if not m:
+        raise ValueError(f"Invalid move: {move}")
+    base, wide, suffix = m.groups()
+    return base, wide, suffix
 
-def parse_move(token: str) -> Move:
-    """
-    Parse a token like: U, U', U2, Uw, Rw2, L, F', etc.
-    Inputs will NOT include tokens beginning with '3', but we parse defensively.
-    """
-    layer = None
-    idx = 0
+def build_move(base, wide, suffix):
+    return f"{base}{wide}{suffix}"
 
-    # Optional '3' prefix (not expected in input, but supported defensively)
-    if token.startswith('3'):
-        layer = 3
-        idx += 1
+# ---------- Mapping tables ----------
 
-    if idx >= len(token) or token[idx] not in 'UDLRFB':
-        raise ValueError(f"Invalid move: {token}")
-    base = token[idx]
-    idx += 1
-
-    # Optional 'w'
-    wide = False
-    if idx < len(token) and token[idx] == 'w':
-        wide = True
-        idx += 1
-
-    # Optional suffix "'" or "2"
-    suffix = ''
-    if idx < len(token):
-        if token[idx:] in ("'", "2"):
-            suffix = token[idx:]
-        else:
-            raise ValueError(f"Invalid suffix in {token}")
-
-    return Move(layer=layer, base=base, wide=wide, suffix=suffix)
-
-
-def format_moves(moves: List[Move]) -> str:
-    return ' '.join(str(m) for m in moves)
-
-
-# --------------------------
-# Mapping specs (unchanged)
-# --------------------------
-
-specs = {
-    'L':  {'map': {'U': 'B', 'B': 'D', 'D': 'F', 'F': 'U'},
-           'special': {(3, 'U', True): 'F', (3, 'B', True): 'U'}},
-    'F':  {'map': {'U': 'L', 'L': 'D', 'D': 'R', 'R': 'U'},
-           'special': {(3, 'R', True): 'D', (3, 'U', True): 'R'}},
-    'D':  {'map': {'F': 'L', 'L': 'B', 'B': 'R', 'R': 'F'},
-           'special': {(3, 'B', True): 'D', (3, 'U', True): 'R'}},
-    'L2': {'map': {'U': 'D', 'D': 'U', 'F': 'B', 'B': 'F'},
-           'special': {(3, 'U', True): 'U'}},
-    'F2': {'map': {'U': 'D', 'D': 'U', 'R': 'L', 'L': 'R'},
-           'special': {(3, 'R', True): 'R'}},
-    'D2': {'map': {'F': 'B', 'B': 'F', 'R': 'L', 'L': 'R'},
-           'special': {(3, 'B', True): 'B'}},
+SINGLE_MAPS = {
+    "L": {"U": "B", "B": "D", "D": "F", "F": "U"},
+    "F": {"U": "L", "L": "D", "D": "R", "R": "U"},
+    "D": {"F": "L", "L": "B", "B": "R", "R": "F"},
 }
 
+DOUBLE_MAPS = {
+    "L": {"U": "D", "D": "U", "F": "B", "B": "F"},
+    "F": {"U": "D", "D": "U", "R": "L", "L": "R"},
+    "D": {"F": "B", "B": "F", "R": "L", "L": "R"},
+}
 
-# --------------------------
-# Pivot conversion
-# --------------------------
+FINAL_CONVERSION = {
+    "L": "3Rw",
+    "D": "3Uw",
+    "F": "3Bw",
+}
 
-def convert_pivot(m: Move) -> Move:
-    """
-    Convert the pivot itself (wide/plain aware). Wide pivots act even without suffix.
-    L  -> 3Rw (plain), Lw -> Rw
-    D  -> 3Uw (plain), Dw -> Uw
-    F  -> 3Bw (plain), Fw -> Bw
-    """
-    if m.base == 'L':
-        if m.wide:
-            return Move(3, 'R', True, m.suffix) if m.layer == 3 else Move(None, 'R', True, m.suffix)
-        return Move(3, 'R', True, m.suffix)
-    if m.base == 'D':
-        if m.wide:
-            return Move(3, 'U', True, m.suffix) if m.layer == 3 else Move(None, 'U', True, m.suffix)
-        return Move(3, 'U', True, m.suffix)
-    if m.base == 'F':
-        if m.wide:
-            return Move(3, 'B', True, m.suffix) if m.layer == 3 else Move(None, 'B', True, m.suffix)
-        return Move(3, 'B', True, m.suffix)
-    return m
+WIDE_CONVERSION = {
+    "L": "R",
+    "F": "B",
+    "D": "U",
+}
 
+# ---------- Core logic ----------
 
-# --------------------------
-# Mapping application
-# --------------------------
+def apply_mapping(base, mapping):
+    return mapping.get(base, base)
 
-def apply_mapping(m: Move, mapping: Dict[str, str], special: Dict[Tuple[int, str, bool], str], reverse: bool = False) -> Move:
-    """
-    Apply mapping to a single move.
-    - For 3w moves (layer==3 and wide==True): apply ONLY special mappings; do not apply base map.
-      BUT: do NOT apply special mappings when the 3w move has suffix '2' (to preserve 3Uw2, 3Rw2, 3Bw2).
-    - For faces/wide (non-3w): apply base-face map.
-    - For prime pivots (reverse=True): use inverse base-face map for faces; special reverse for face->3w where defined.
-    - Preserve suffix.
-    - Do NOT immediately convert plain L/D/F results; they will act later when encountered.
-    """
-    is_3w = (m.layer == 3 and m.wide)
+def process_moves(move_string):
+    moves = move_string.split()
+    parsed = [parse_move(m) for m in moves]
 
-    if not reverse:
-        if is_3w:
-            # Suppress specials on 3w double-turns
-            if m.suffix == '2':
-                return m
-            key = (m.layer, m.base, m.wide)
-            if key in special:
-                # Special maps 3Uw/3Rw/3Bw to a base face; keep as plain face (suffix preserved)
-                return Move(None, special[key], False, m.suffix)
-            # No base map applied to 3w moves
-            return m
+    for i, (base, wide, suffix) in enumerate(parsed):
+        if base not in ("L", "F", "D"):
+            continue
+
+        # Choose mapping
+        if "2" in suffix:
+            mapping = DOUBLE_MAPS[base]
         else:
-            if m.base in mapping:
-                return Move(m.layer, mapping[m.base], m.wide, m.suffix)
-            return m
-    else:
-        # Reverse direction
-        if is_3w:
-            # No base inverse for 3w; no reverse specials defined from 3w
-            return m
+            mapping = SINGLE_MAPS[base]
+
+        # Reverse mapping if '
+        if "'" in suffix:
+            mapping = {v: k for k, v in mapping.items()}
+
+        # Apply mapping to all following moves
+        for j in range(i + 1, len(parsed)):
+            b, w, s = parsed[j]
+            parsed[j] = (apply_mapping(b, mapping), w, s)
+
+        # Convert wide L/F/D to R/B/U
+        if wide:
+            base = WIDE_CONVERSION[base]
+            parsed[i] = (base, wide, suffix)
+
+    # Final conversion pass
+    result = []
+    for base, wide, suffix in parsed:
+        if base in FINAL_CONVERSION:
+            result.append(FINAL_CONVERSION[base] + wide + suffix)
         else:
-            inv_map = {v: k for k, v in mapping.items()}
-            if m.base in inv_map:
-                return Move(m.layer, inv_map[m.base], m.wide, m.suffix)
-            # Reverse special: face -> 3w when defined
-            rev_special = {v: k for k, v in special.items()}  # e.g., 'D' -> (3,'R',True)
-            if m.base in rev_special:
-                layer, base, wide = rev_special[m.base]
-                return Move(layer, base, wide, m.suffix)
-            return m
+            result.append(build_move(base, wide, suffix))
 
+    return " ".join(result)
 
-# --------------------------
-# Main conversion
-# --------------------------
-
-def convert_sequence(seq: str) -> str:
-    moves = [parse_move(tok) for tok in seq.split() if tok.strip()]
-    i = 0
-    while i < len(moves):
-        m = moves[i]
-        if m.base in ('L', 'D', 'F'):
-            pivot_key = m.base + ('2' if m.suffix == '2' else '')
-            if pivot_key in specs:
-                # Convert pivot itself
-                moves[i] = convert_pivot(m)
-
-                # Determine mapping direction
-                reverse = (m.suffix == "'") and (pivot_key in ('L', 'D', 'F'))
-
-                # Apply mapping to all subsequent moves
-                mapping = specs[pivot_key]['map']
-                special = specs[pivot_key]['special']
-                for j in range(i + 1, len(moves)):
-                    moves[j] = apply_mapping(moves[j], mapping, special, reverse)
-        i += 1
-    return format_moves(moves)
-
-
-# --------------------------
-# Debug helper (optional)
-# --------------------------
-
-def convert_sequence_debug(seq: str) -> str:
-    moves = [parse_move(t) for t in seq.split() if t.strip()]
-    print('start:', ' '.join(str(m) for m in moves))
-    i = 0
-    while i < len(moves):
-        m = moves[i]
-        if m.base in ('L', 'D', 'F'):
-            pivot_key = m.base + ('2' if m.suffix == '2' else '')
-            if pivot_key in specs:
-                print(f"pivot at {i}: {str(m)} ->", end=' ')
-                moves[i] = convert_pivot(m)
-                print(str(moves[i]))
-                reverse = (m.suffix == "'") and (pivot_key in ('L', 'D', 'F'))
-                mapping = specs[pivot_key]['map']
-                special = specs[pivot_key]['special']
-                for j in range(i + 1, len(moves)):
-                    before = str(moves[j])
-                    moves[j] = apply_mapping(moves[j], mapping, special, reverse)
-                    after = str(moves[j])
-                    if before != after:
-                        print(f"  map {j}: {before} -> {after}")
-        i += 1
-    print('end:  ', ' '.join(str(m) for m in moves))
-    return ' '.join(str(m) for m in moves)
-
-
-# --------------------------
-# Tests (inputs do NOT start with '3')
-# --------------------------
-
-def run_tests():
-    """
-    Deterministic tests + prints for inspection.
-    Inputs DO NOT include any tokens beginning with '3'.
-    """
-    tests = [
-        # Sequential pivots on converted string (your corrected example):
-        ("L U B D F",              "3Rw B 3Uw 3Rw B"),
-
-        # Wide pivots act even without suffix, and subsequent pivots are processed
-        ("Dw F",                   "Uw 3Rw"),
-        ("Lw U",                   "Rw B"),
-        ("Fw R",                   "Bw U"),
-
-        # Prime/2 variants for wide pivots
-        ("Lw' U B",                "Rw' 3Bw 3Rw"),
-        ("Lw2 U D",                "Rw2 3Uw U"),
-
-        # Mixed example with wide/non-wide and suffixes
-        ("U L F' Uw2 R",           "U 3Rw U' Bw2 R"),
-
-        # Singular long case from your message (tail must remain 3Uw2)
-        ("L2 D' R L2 U F' D F' R2 B' U2 F R2 F2 L2 B D2 B U2 D Uw2 Rw2 U2 Fw2 L' Fw2 D' B2 Fw2 R D' L' B U2 Fw Uw2 R' Uw F Uw Rw' U2 L2",
-         "3Rw2 U' R 3Rw2 U 3Bw' 3Rw U' 3Bw2 U' 3Rw2 U B2 U2 3Bw2 U 3Rw2 3Uw 3Bw2 B Bw2 Rw2 B2 Uw2 3Rw' Bw2 U' 3Bw2 Bw2 3Rw 3Bw' 3Uw' B 3Rw2 Bw Rw2 U' Rw U Rw Uw' 3Bw2 3Uw2"),
-    ]
-
-    for inp, expected in tests:
-        out = convert_sequence(inp)
-        print(f"{inp} -> {out}")
-        assert out == expected, f"Expected: {expected}, got: {out}"
-
-    # Guard: ensure no 3Lw/3Dw/3Fw ever appear
-    dangers = ("3Lw", "3Dw", "3Fw")
-    for inp, _ in tests:
-        out = convert_sequence(inp)
-        for d in dangers:
-            assert d not in out, f"Forbidden {d} in output for '{inp}': {out}"
-
-    print("\nAll tests passed ✅")
-
-
-# --------------------------
-# CLI
-# --------------------------
+# ---------- Example usage ----------
 
 if __name__ == "__main__":
-    import sys
-    if len(sys.argv) > 1:
-        arg = ' '.join(sys.argv[1:])
-        if arg.startswith("--debug "):
-            seq = arg[len("--debug "):]
-            convert_sequence_debug(seq)
-        else:
-            print(convert_sequence(arg))
-    else:
-        run_tests()
+    inp = "R D2 F2 B2 R' B2 L D2 B2 L D2 B2 U' R' L2 D F2 L F D Fw2 D B2 Fw2 R L Fw2 U' Fw2 R2 D2 R2 Fw' L' D' F B' Rw2 Uw' F' L' Rw D2 R' Fw Rw'"
+    print(process_moves(inp))
