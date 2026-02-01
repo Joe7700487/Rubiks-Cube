@@ -11,20 +11,18 @@
 
 #define SERVOMIN 125 // 0
 #define SERVOMAX 625 // 180
+#define DELAY 75
+#define POSTDELAY 75
 
 #define STEPPERACC 2000
-#define STEPPERSPEED 2500
+#define STEPPERSPEED 2000
 
 #define HANDOFF 0 // off position of hands
-#define NORMAL 70 // single layer position
-#define WIDE 110  // double and triple layer position
+#define NORMAL 110 // single layer position
+#define WIDE 150 // double and triple layer position
 
-#define BLOCKOFF 80 // off position of block
+#define BLOCKOFF 75 // off position of block
 #define BLOCKON 3 // on position of block
-
-// #define FULLTURN 1600
-// #define HALFTURN 800
-// #define QUARTERTURN 400
 
 #define COMPENSATION 50 // compensation for wiggle in the mechanism to ensure turns are complete
 #define CW -400 // 90 degrees clockwise rotation
@@ -42,30 +40,12 @@
 Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
 
 // Define the stepper motor and the pins that is connected to
-AccelStepper stepper2(1, 3, 2); // U
-AccelStepper stepper3(1, 5, 4); // B
-AccelStepper stepper1(1, 7, 6); // R
+AccelStepper stepper1(1, 3, 2); // R
+AccelStepper stepper3(1, 5, 4); // U
+AccelStepper stepper2(1, 7, 6); // B
 AccelStepper* motor[3] = {&stepper1, &stepper2, &stepper3};
 // if motor.position is a multiple of 800 or 0, its default state
 // if not, its 90 degrees of default
-
-// [{side, layers, amount, stepper.pos, servo.pos}, ...]
-class Move {
-  public:
-    int side;
-    int layers;
-    int amount;
-    AccelStepper* stepper; // motor[side]->currentPosition() to calculate state
-    // tracking for servo state if needed
-    Move (int index, int moveLayers, int stepperAmount) {
-      side = index;
-      layers = moveLayers;
-      amount = stepperAmount;
-      stepper = motor[index];
-    }
-};
-
-
 
 void setup() {
   Serial.begin(9600);
@@ -79,10 +59,13 @@ void setup() {
   stepper2.setMaxSpeed(STEPPERSPEED);
   stepper2.setAcceleration(STEPPERACC);
   stepper2.setCurrentPosition(0);
-
   stepper3.setMaxSpeed(STEPPERSPEED);
   stepper3.setAcceleration(STEPPERACC);
   stepper3.setCurrentPosition(0);
+
+  stepper1.setSpeed(STEPPERSPEED);
+  stepper2.setSpeed(STEPPERSPEED);
+  stepper3.setSpeed(STEPPERSPEED);
 
   for (int i = 0; i < 3; i++) { // move all handles to default position
     pwm.setPWM(i, 0, angleToPulse(HANDOFF));
@@ -105,128 +88,103 @@ void loop() {
     String move = Serial.readString();
     move.trim();
 
+
     if (move == "S") {
       // (R U R' U') (R' 3Bw U2) (3Rw' 3Bw' U') (3Bw 3Rw U' 3Bw')
-      turnFace(R, 1, CW);
-      turnFace(U, 1, CW);
-      turnFace(R, 1, CCW);
-      turnFace(U, 1, CCW);
+      // B Rw 3Bw B Bw Rw 3Uw 3Bw Uw' B 3Rw Uw2 Bw' 3Rw' B' Uw2 Bw2 
+      String moves[44] = { "B", "Rw", "3Bw", "B", "Bw", "Rw", "3Uw", "3Bw", "Uw'", "B", "3Rw", "Uw2", "Bw'", "3Rw'", "B'", "Uw2", "Bw2", "3Rw", "3Bw2", "U2", "Rw2", "U'", "R", "Uw2", "Bw2", "3Bw'", "3Rw2", "U", "3Rw2", "B2", "R2", "B2", "3Uw2", "3Bw2", "U2", "3Bw", "3Rw2", "U'", "B'", "3Uw'", "3Rw", "R'", "3Bw", "U2" };
+      String tperm[14] = { "R", "U", "R'", "U'", "R'", "3Bw", "U2", "3Rw'", "3Bw'", "U'", "3Bw", "3Rw", "U'", "3Bw'" };
 
-      turnFace(R, 1, CCW);
-      turnFace(B, 3, CW);
-      turnFace(U, 1, DOUBLE);
-
-      turnFace(R, 3, CCW);
-      turnFace(B, 3, CCW);
-      turnFace(U, 1, CCW);
-
-      turnFace(B, 3, CW);
-      turnFace(R, 3, CW);
-      turnFace(U, 1, CCW);
-      turnFace(B, 3, CCW);
+      for (String m : moves ) {
+        turnFace(m);
+      }
     }
 
-    if (move == "R") {
-      turnFace(R, 1, CW);
-    }
-    if (move == "R'") {
-      turnFace(R, 1, CCW);
-    }
-
-    if (move == "U") {
-      turnFace(U, 1, CW);
-    }
-
-    if (move == "B") {
-      turnFace(B, 1, CW);
-    }
+    turnFace(move);
   }
 }
 
-// 0 = R
-// 1 = U
-// 2 = B
-// 4 = Blocker for wide moves
-// turns a side by taking in what side and how many layers to turn
-void turnFace(int side, int layers, int amount) { // no functionality for lookahead
+void turnFace(String move) {
   int comp;
+  int layers;
+  int amount;
+  int side;
+  if (move.indexOf("3") != -1) {
+    layers = 3;
+  }
+  else if (move.indexOf("w") != -1) {
+    layers = 2;
+  }
+  else {
+    layers = 1;
+  }
+  if (move.indexOf("'") != -1) {
+    amount = CCW;
+  }
+  else if (move.indexOf("2") != -1) {
+    amount = DOUBLE;
+  }
+  else {
+    amount = CW;
+  }
   if (amount > 0) {
     comp = COMPENSATION;
   }
   else if (amount < 0) {
     comp = COMPENSATION * -1;
   }
-  if (layers == 1 || layers == 2) {
+  if (move.indexOf("R") != -1) {
+    side = R;
+  }
+  else if (move.indexOf("U") != -1) {
+    side = U;
+  }
+  else if (move.indexOf("B") != -1) {
+    side = B;
+  }
+  
+  Serial.println(move);
+  if (layers == 1) {
     pwm.setPWM(3, 0, angleToPulse(BLOCKON));
     pwm.setPWM(side, 0, angleToPulse(NORMAL));
-    delay(200);
+    delay(POSTDELAY);
 
     motor[side]->moveTo(motor[side]->currentPosition() + amount + comp);
-    motor[side]->runSpeedToPosition();
     while(motor[side]->distanceToGo() != 0) {motor[side]->run();}
     motor[side]->moveTo(motor[side]->currentPosition() - comp);
-    motor[side]->runSpeedToPosition();
     while(motor[side]->distanceToGo() != 0) {motor[side]->run();}
 
     pwm.setPWM(side, 0, angleToPulse(HANDOFF));
     pwm.setPWM(3, 0, angleToPulse(BLOCKOFF));
-    delay(300);
+    delay(DELAY);
   }
   else if (layers == 2) {
     pwm.setPWM(3, 0, angleToPulse(BLOCKON));
     pwm.setPWM(side, 0, angleToPulse(WIDE));
-    delay(200);
+    delay(POSTDELAY);
 
     motor[side]->moveTo(motor[side]->currentPosition() + amount + comp);
-    motor[side]->runSpeedToPosition();
     while(motor[side]->distanceToGo() != 0) {motor[side]->run();}
     motor[side]->moveTo(motor[side]->currentPosition() - comp);
-    motor[side]->runSpeedToPosition();
     while(motor[side]->distanceToGo() != 0) {motor[side]->run();}
 
     pwm.setPWM(side, 0, angleToPulse(HANDOFF));
     pwm.setPWM(3, 0, angleToPulse(BLOCKOFF));
-    delay(300);
+    delay(DELAY);
   }
   else if (layers == 3) {
     pwm.setPWM(side, 0, angleToPulse(WIDE));
-    delay(200);
+    delay(POSTDELAY);
 
     motor[side]->moveTo(motor[side]->currentPosition() + amount + comp);
-    motor[side]->runSpeedToPosition();
     while(motor[side]->distanceToGo() != 0) {motor[side]->run();}
     motor[side]->moveTo(motor[side]->currentPosition() - comp);
-    motor[side]->runSpeedToPosition();
     while(motor[side]->distanceToGo() != 0) {motor[side]->run();}
 
     pwm.setPWM(side, 0, angleToPulse(HANDOFF));
-    delay(200);
+    delay(DELAY);
   }
 }
-
-// prepare > activate > move
-// before executing the current move, deactivate the previous, activate the current at the same time and
-// prepare the next move at the same time
-void movement (int previousMove, int currentMove, int nextMove) {
-  // 1.deactivate previous and activate current at the same time
-  // (shouldnt cause a collision due to preparation from the previous move)
-  // while activating and deactiviating, prepare the next move to prevent collisions
-  // (collisions could happen when preparing move while executing move)
-  // 2.execute the current move
-  // 3.repeat with following moves 
-
-  // moves could be stored as
-  // [{side, layers, amount, stepper.pos, servo.pos}, ...]
-}
-
-// simultaneous moves
-// default position is handles inline with gears
-// moved position is 90 degrees of default position
-// one handle activates as another deactivates. only possible when both handles involved are matching state
-// option 1: keep track of handle positions to move simultaneously when possible
-// option 2: keep track of current handle position while activited and position 
-//           the next move to match state during the current move 
-//           (anticipation of next move should happen before the rotation of the current move)
 
 int angleToPulse(int ang) {
   int pulse = map(ang, 0, 180, SERVOMIN, SERVOMAX);

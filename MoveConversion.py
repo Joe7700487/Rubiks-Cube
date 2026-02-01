@@ -120,5 +120,7 @@ def process_moves(move_string):
 # ---------- Example usage ----------
 
 if __name__ == "__main__":
-    inp = "R D2 F2 B2 R' B2 L D2 B2 L D2 B2 U' R' L2 D F2 L F D Fw2 D B2 Fw2 R L Fw2 U' Fw2 R2 D2 R2 Fw' L' D' F B' Rw2 Uw' F' L' Rw D2 R' Fw Rw'"
-    print(process_moves(inp))
+    inp = "B Rw F B Fw Rw B L Uw' B R Fw2 Uw' B' L' Uw2 Rw2 F U2 R2 Fw2 R' F Rw2 Uw2 U' R2 B R2 D2 L2 D2 B2 D2 B2 D B2 R' D' L' D U' L U2"
+    inp = process_moves(inp)
+    inp = inp.split(" ")
+    print(inp)

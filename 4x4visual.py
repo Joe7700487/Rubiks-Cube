@@ -284,7 +284,9 @@ gMoves = {  "U":  gMove("U", np.array([0, 2, 0]),  270,  lambda pos: pos[y] > 1)
             "Rw2": gMove("Rw2", np.array([1, 0, 0]),  180,  lambda pos: pos[x] > 0),
             "Fw2": gMove("Fw2", np.array([0, 0, 1]),  180,  lambda pos: pos[z] > 0) }
 
-solvedCube = list("UUURUUUFUUUFUUUFRRRBRRRBRRRBRRRBRRRDFFFDFFFDFFFDDDDBDDDBDDDBDDDLFFFFLLLLLLLLLLLLULLLUBBBUBBBUBBB")
+solvedCube = list("UUUUUUUUUUUUUUUURRRRRRRRRRRRRRRRFFFFFFFFFFFFFFFFDDDDDDDDDDDDDDDDLLLLLLLLLLLLLLLLBBBBBBBBBBBBBBBB")
+robotMask = list("UUUUUUUUUUUUUUUURRRRRRRRRRRRRRRRFFFFFFFFFFFFXFFFXDDDDDDDDDDDDDDDLLLLLLLLLLLLLLLXBBBBBBBBBBBBBBBB")
+# indicies: (45 = F, 49 = D, 80 = L)
 
 solvedGCube = [ Sticker(np.array([x, 4, y]), np.array([x, 4, y])) if f == 0 else
                 Sticker(np.array([x, -4, y]), np.array([x, -4, y])) if f == 1 else
@@ -308,16 +310,14 @@ while running:
             running = False
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_u:
-                # applyGmoves(solvedGCube, "U'")
-                # solvedCube = convertGcube(solvedGCube)
-                solvedCube = applyFmoves(solvedCube, "Uw")
-
+                solvedCube = applyFmoves(solvedCube, "D R2 D2 B2 L B2 L' F2 L U2 R D2 L2 F' L2 B2 U' F D B2 L' Rw2 B' U Uw2 Fw2 L2 U' L2 F B2 U' R' Rw Uw2 Rw' B Uw' Fw' U' B' U' F Rw'")
+                print("".join(solvedCube))
 
     # fill the screen with a color to wipe away anything from last frame
     screen.fill((100,100,100))
 
     drawState(solvedCube, 100, 100)
-    drawState(solvedCube, 100, 300)
+    drawState(robotMask, 100, 300)
 
 
     # flip() the display to put your work on screen
