@@ -14,8 +14,8 @@
 #define DELAY 75
 #define POSTDELAY 75
 
-#define STEPPERACC 2000
-#define STEPPERSPEED 2000
+#define STEPPERACC 8000
+#define STEPPERSPEED 6000
 
 #define HANDOFF 0 // off position of hands
 #define NORMAL 110 // single layer position
@@ -40,18 +40,21 @@
 Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
 
 // Define the stepper motor and the pins that is connected to
-AccelStepper stepper1(1, 3, 2); // R
-AccelStepper stepper3(1, 5, 4); // U
-AccelStepper stepper2(1, 7, 6); // B
+AccelStepper stepper1(1, 25, 26); // R
+AccelStepper stepper3(1, 27, 14); // U
+AccelStepper stepper2(1, 33, 32); // B
 AccelStepper* motor[3] = {&stepper1, &stepper2, &stepper3};
 // if motor.position is a multiple of 800 or 0, its default state
 // if not, its 90 degrees of default
 
 void setup() {
-  Serial.begin(9600);
+  Serial.begin(115200);
 
+  Wire.begin(21, 22);
+  Wire.setClock(400000);
   pwm.begin(); // start servo motors
-  pwm.setPWMFreq(60);
+  pwm.setPWMFreq(50);
+  delay(5);
 
   stepper1.setMaxSpeed(STEPPERSPEED);
   stepper1.setAcceleration(STEPPERACC);
@@ -62,10 +65,6 @@ void setup() {
   stepper3.setMaxSpeed(STEPPERSPEED);
   stepper3.setAcceleration(STEPPERACC);
   stepper3.setCurrentPosition(0);
-
-  stepper1.setSpeed(STEPPERSPEED);
-  stepper2.setSpeed(STEPPERSPEED);
-  stepper3.setSpeed(STEPPERSPEED);
 
   for (int i = 0; i < 3; i++) { // move all handles to default position
     pwm.setPWM(i, 0, angleToPulse(HANDOFF));
@@ -85,19 +84,20 @@ void setup() {
 
 void loop() {
   if (Serial.available() > 0) {
-    String move = Serial.readString();
-    move.trim();
+    char move[12];
+    int n = Serial.readBytesUntil('\n', move, sizeof(move) - 1);
+    if (n <= 0) return;
+    if (move[n-1] == '\r') n--; // trim CR if present
+    move[n] = '\0';
 
-
-    if (move == "S") {
-      // (R U R' U') (R' 3Bw U2) (3Rw' 3Bw' U') (3Bw 3Rw U' 3Bw')
-      // B Rw 3Bw B Bw Rw 3Uw 3Bw Uw' B 3Rw Uw2 Bw' 3Rw' B' Uw2 Bw2 
+    if (strcmp(move, "S") == 0) {
       String moves[44] = { "B", "Rw", "3Bw", "B", "Bw", "Rw", "3Uw", "3Bw", "Uw'", "B", "3Rw", "Uw2", "Bw'", "3Rw'", "B'", "Uw2", "Bw2", "3Rw", "3Bw2", "U2", "Rw2", "U'", "R", "Uw2", "Bw2", "3Bw'", "3Rw2", "U", "3Rw2", "B2", "R2", "B2", "3Uw2", "3Bw2", "U2", "3Bw", "3Rw2", "U'", "B'", "3Uw'", "3Rw", "R'", "3Bw", "U2" };
-      String tperm[14] = { "R", "U", "R'", "U'", "R'", "3Bw", "U2", "3Rw'", "3Bw'", "U'", "3Bw", "3Rw", "U'", "3Bw'" };
+      // String tperm[14] = { "R", "U", "R'", "U'", "R'", "3Bw", "U2", "3Rw'", "3Bw'", "U'", "3Bw", "3Rw", "U'", "3Bw'" };
 
       for (String m : moves ) {
         turnFace(m);
       }
+      return;
     }
 
     turnFace(move);
@@ -108,7 +108,7 @@ void turnFace(String move) {
   int comp;
   int layers;
   int amount;
-  int side;
+  int side = -1;
   if (move.indexOf("3") != -1) {
     layers = 3;
   }
@@ -142,7 +142,9 @@ void turnFace(String move) {
   else if (move.indexOf("B") != -1) {
     side = B;
   }
-  
+  if (side == -1) {
+    return;
+  }
   Serial.println(move);
   if (layers == 1) {
     pwm.setPWM(3, 0, angleToPulse(BLOCKON));
@@ -150,9 +152,13 @@ void turnFace(String move) {
     delay(POSTDELAY);
 
     motor[side]->moveTo(motor[side]->currentPosition() + amount + comp);
-    while(motor[side]->distanceToGo() != 0) {motor[side]->run();}
+    while(motor[side]->distanceToGo() != 0) {
+      motor[side]->run();
+    }
     motor[side]->moveTo(motor[side]->currentPosition() - comp);
-    while(motor[side]->distanceToGo() != 0) {motor[side]->run();}
+    while(motor[side]->distanceToGo() != 0) {
+      motor[side]->run();
+    }
 
     pwm.setPWM(side, 0, angleToPulse(HANDOFF));
     pwm.setPWM(3, 0, angleToPulse(BLOCKOFF));
@@ -164,9 +170,13 @@ void turnFace(String move) {
     delay(POSTDELAY);
 
     motor[side]->moveTo(motor[side]->currentPosition() + amount + comp);
-    while(motor[side]->distanceToGo() != 0) {motor[side]->run();}
+    while(motor[side]->distanceToGo() != 0) {
+      motor[side]->run();
+    }
     motor[side]->moveTo(motor[side]->currentPosition() - comp);
-    while(motor[side]->distanceToGo() != 0) {motor[side]->run();}
+    while(motor[side]->distanceToGo() != 0) {
+      motor[side]->run();
+    }
 
     pwm.setPWM(side, 0, angleToPulse(HANDOFF));
     pwm.setPWM(3, 0, angleToPulse(BLOCKOFF));
@@ -177,9 +187,13 @@ void turnFace(String move) {
     delay(POSTDELAY);
 
     motor[side]->moveTo(motor[side]->currentPosition() + amount + comp);
-    while(motor[side]->distanceToGo() != 0) {motor[side]->run();}
+    while(motor[side]->distanceToGo() != 0) {
+      motor[side]->run();
+    }
     motor[side]->moveTo(motor[side]->currentPosition() - comp);
-    while(motor[side]->distanceToGo() != 0) {motor[side]->run();}
+    while(motor[side]->distanceToGo() != 0) {
+      motor[side]->run();
+    }
 
     pwm.setPWM(side, 0, angleToPulse(HANDOFF));
     delay(DELAY);
@@ -187,6 +201,7 @@ void turnFace(String move) {
 }
 
 int angleToPulse(int ang) {
+  ang = constrain(ang, 0, 180);
   int pulse = map(ang, 0, 180, SERVOMIN, SERVOMAX);
   return pulse;
 }
