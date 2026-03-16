@@ -1,4 +1,4 @@
-# Example file showing a circle moving on screen
+# 4x4 solver
 import pygame
 import numpy as np
 import math
